@@ -1,13 +1,19 @@
+import os
+
+import os
+
 from kivy.uix.screenmanager import Screen
 from kivy.uix.popup import Popup
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.graphics import Color, Rectangle
 from kivy.properties import StringProperty
 from db.connection import get_connection
+from utils.estado_cuenta import generar_estado_cuenta
 
 MESES = {
     1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -129,6 +135,13 @@ class SuscriptoresScreen(Screen):
             """, (cuenta,))
             recaudos = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
 
+            cursor.execute("""
+                SELECT id, tipo, asunto, estado, fecha_creacion
+                FROM pqr WHERE cuenta_contrato = %s
+                ORDER BY fecha_creacion DESC
+            """, (cuenta,))
+            pqr_list = cursor.fetchall()
+
         except Exception as e:
             self.mensaje = f'Error al cargar detalle: {e}'
             return
@@ -136,9 +149,9 @@ class SuscriptoresScreen(Screen):
             cursor.close()
             conn.close()
 
-        self._popup_detalle(info, facturas, recaudos)
+        self._popup_detalle(info, facturas, recaudos, pqr_list)
 
-    def _popup_detalle(self, info, facturas, recaudos):
+    def _popup_detalle(self, info, facturas, recaudos, pqr_list):
         if not info:
             return
 
@@ -240,18 +253,198 @@ class SuscriptoresScreen(Screen):
         scroll.add_widget(tabla)
         content.add_widget(scroll)
 
-        # Pie con totales
+        # Pie con totales y botones
         pie = BoxLayout(size_hint_y=None, height=42, spacing=10)
         pie.add_widget(Label(text=f'Facturado: ${total_facturado:,.0f}',
                               font_size=12, color=(0.8, 0.8, 0.8, 1)))
         pie.add_widget(Label(text=f'Pagado: ${total_pagado:,.0f}',
                               font_size=12, color=(0.2, 0.9, 0.4, 1)))
-        btn_cerrar = Button(text='Cerrar', size_hint_x=None, width=110,
-                             background_color=(0.35, 0.35, 0.35, 1))
+
+        lbl_pdf = Label(text='', font_size=11, color=(0.4, 0.9, 0.4, 1),
+                        size_hint_x=None, width=220)
+        pie.add_widget(lbl_pdf)
+
+        btn_editar = Button(text='Editar', size_hint_x=None, width=100,
+                            background_color=(0.7, 0.45, 0.05, 1))
+        btn_pdf    = Button(text='Generar PDF', size_hint_x=None, width=130,
+                            background_color=(0.1, 0.55, 0.9, 1))
+        btn_cerrar = Button(text='Cerrar', size_hint_x=None, width=100,
+                            background_color=(0.35, 0.35, 0.35, 1))
+        pie.add_widget(btn_editar)
+        pie.add_widget(btn_pdf)
         pie.add_widget(btn_cerrar)
         content.add_widget(pie)
 
         popup = Popup(title=f'Suscriptor — {nombre}',
                       content=content, size_hint=(0.82, 0.88))
+
+        def generar_pdf(_):
+            try:
+                ruta = generar_estado_cuenta(info, facturas, recaudos, pqr_list)
+                lbl_pdf.text = 'PDF guardado'
+                os.startfile(ruta)
+            except Exception as e:
+                lbl_pdf.text = f'Error: {e}'
+                lbl_pdf.color = (1, 0.3, 0.3, 1)
+
+        def abrir_editor(_):
+            popup.dismiss()
+            self._popup_formulario(cuenta_editar=cuenta)
+
+        btn_editar.bind(on_press=abrir_editor)
+        btn_pdf.bind(on_press=generar_pdf)
         btn_cerrar.bind(on_press=popup.dismiss)
+        popup.open()
+
+    # ------------------------------------------------------------------
+    #  Popup compartido: Nuevo / Editar suscriptor
+    # ------------------------------------------------------------------
+    def nuevo_suscriptor(self):
+        self._popup_formulario(cuenta_editar=None)
+
+    def _popup_formulario(self, cuenta_editar=None):
+        es_edicion = cuenta_editar is not None
+        datos_actuales = {}
+
+        if es_edicion:
+            conn = get_connection()
+            if not conn:
+                return
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT cuenta, susccodi, nombre, direccion, municipio,
+                           barrio, subcategoria, estrato, estado_suministro
+                    FROM suscriptores WHERE cuenta = %s LIMIT 1
+                """, (cuenta_editar,))
+                row = cur.fetchone()
+                if row:
+                    keys = ['cuenta', 'susccodi', 'nombre', 'direccion',
+                            'municipio', 'barrio', 'subcategoria',
+                            'estrato', 'estado_suministro']
+                    datos_actuales = {k: (str(v) if v is not None else '')
+                                      for k, v in zip(keys, row)}
+            finally:
+                cur.close()
+                conn.close()
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=15)
+
+        form = GridLayout(cols=2, size_hint_y=None, spacing=8, padding=[0, 4])
+        form.bind(minimum_height=form.setter('height'))
+
+        campos = [
+            ('Cuenta *',         'cuenta',          not es_edicion),
+            ('SUSCCODI',         'susccodi',         not es_edicion),
+            ('Nombre *',         'nombre',           True),
+            ('Dirección',        'direccion',        True),
+            ('Municipio',        'municipio',        True),
+            ('Barrio',           'barrio',           True),
+            ('Subcategoría',     'subcategoria',     True),
+            ('Estrato',          'estrato',          True),
+            ('Estado suministro','estado_suministro',True),
+        ]
+
+        inputs = {}
+        for label_txt, key, editable in campos:
+            lbl = Label(text=label_txt, color=(0.5, 0.75, 1, 1),
+                        bold=True, halign='right', size_hint_y=None, height=38)
+            lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0], v[1])))
+            form.add_widget(lbl)
+
+            inp = TextInput(
+                text=datos_actuales.get(key, ''),
+                multiline=False,
+                size_hint_y=None, height=38,
+                readonly=not editable,
+                foreground_color=(0.5, 0.5, 0.5, 1) if not editable else (1, 1, 1, 1),
+                background_color=(0.15, 0.15, 0.2, 1) if not editable else (0.12, 0.12, 0.22, 1),
+            )
+            form.add_widget(inp)
+            inputs[key] = inp
+
+        scroll = ScrollView(size_hint_y=1)
+        scroll.add_widget(form)
+        content.add_widget(scroll)
+
+        lbl_err = Label(text='', color=(1, 0.3, 0.3, 1),
+                        size_hint_y=None, height=26)
+        content.add_widget(lbl_err)
+
+        btns = BoxLayout(size_hint_y=None, height=44, spacing=12)
+        lbl_ok     = Label(text='', color=(0.2, 0.9, 0.4, 1), font_size=12)
+        btn_guardar  = Button(text='Guardar', background_color=(0.1, 0.65, 0.35, 1))
+        btn_cancelar = Button(text='Cancelar', background_color=(0.35, 0.35, 0.35, 1))
+        btns.add_widget(lbl_ok)
+        btns.add_widget(btn_guardar)
+        btns.add_widget(btn_cancelar)
+        content.add_widget(btns)
+
+        titulo = f'Editar Suscriptor — {cuenta_editar}' if es_edicion else 'Nuevo Suscriptor'
+        popup = Popup(title=titulo, content=content, size_hint=(0.55, 0.82))
+
+        def guardar(_):
+            nombre_val = inputs['nombre'].text.strip()
+            if not nombre_val:
+                lbl_err.text = 'El nombre es obligatorio'
+                return
+
+            conn = get_connection()
+            if not conn:
+                lbl_err.text = 'Error de conexión'
+                return
+            cur = conn.cursor()
+            try:
+                if es_edicion:
+                    cur.execute("""
+                        UPDATE suscriptores
+                        SET nombre=%s, direccion=%s, municipio=%s, barrio=%s,
+                            subcategoria=%s, estrato=%s, estado_suministro=%s
+                        WHERE cuenta=%s
+                    """, (
+                        nombre_val,
+                        inputs['direccion'].text.strip() or None,
+                        inputs['municipio'].text.strip() or None,
+                        inputs['barrio'].text.strip() or None,
+                        inputs['subcategoria'].text.strip() or None,
+                        inputs['estrato'].text.strip() or None,
+                        inputs['estado_suministro'].text.strip() or None,
+                        cuenta_editar,
+                    ))
+                else:
+                    cuenta_val = inputs['cuenta'].text.strip()
+                    susccodi_val = inputs['susccodi'].text.strip()
+                    if not cuenta_val:
+                        lbl_err.text = 'El número de cuenta es obligatorio'
+                        cur.close(); conn.close()
+                        return
+                    cur.execute("""
+                        INSERT INTO suscriptores
+                        (cuenta, susccodi, nombre, direccion, municipio,
+                         barrio, subcategoria, estrato, estado_suministro)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        int(cuenta_val),
+                        int(susccodi_val) if susccodi_val else None,
+                        nombre_val,
+                        inputs['direccion'].text.strip() or None,
+                        inputs['municipio'].text.strip() or None,
+                        inputs['barrio'].text.strip() or None,
+                        inputs['subcategoria'].text.strip() or None,
+                        inputs['estrato'].text.strip() or None,
+                        inputs['estado_suministro'].text.strip() or None,
+                    ))
+                conn.commit()
+                lbl_ok.text = 'Guardado correctamente'
+                lbl_err.text = ''
+                self._cargar_lista('')
+            except Exception as e:
+                conn.rollback()
+                lbl_err.text = f'Error: {e}'
+            finally:
+                cur.close()
+                conn.close()
+
+        btn_guardar.bind(on_press=guardar)
+        btn_cancelar.bind(on_press=popup.dismiss)
         popup.open()

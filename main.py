@@ -25,4 +25,4 @@ class RecivaApp(App):
 
 
 if __name__ == '__main__':
-    RecivaApp().run()
+    RecivaApp().run() 

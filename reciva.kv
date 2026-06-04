@@ -154,8 +154,10 @@
                         Rectangle:
                             pos: self.pos
                             size: self.size
+                    on_touch_down: if self.collide_point(*args[1].pos): root.popup_barrios()
                     Label:
-                        text: 'Suscriptores\n' + root.total_suscriptores
+                        text: 'Suscriptores\n' + root.total_suscriptores + '\n[size=11][color=aaddff]▶ ver por barrio[/color][/size]'
+                        markup: True
                         halign: 'center'
                         bold: True
                         font_size: 15
@@ -331,20 +333,26 @@
                     id: inp_buscar
                     hint_text: 'Buscar por número de cuenta o nombre...'
                     multiline: False
-                    size_hint_x: 0.6
+                    size_hint_x: 0.48
                     on_text_validate: root.buscar(self.text)
 
                 Button:
                     text: 'Buscar'
-                    size_hint_x: 0.18
+                    size_hint_x: 0.14
                     background_color: 0.2, 0.6, 1, 1
                     on_press: root.buscar(inp_buscar.text)
 
                 Button:
                     text: 'Mostrar todos'
-                    size_hint_x: 0.22
+                    size_hint_x: 0.18
                     background_color: 0.15, 0.15, 0.3, 1
                     on_press: root.mostrar_todos()
+
+                Button:
+                    text: '+ Nuevo'
+                    size_hint_x: 0.2
+                    background_color: 0.1, 0.65, 0.35, 1
+                    on_press: root.nuevo_suscriptor()
 
             Label:
                 text: root.mensaje
