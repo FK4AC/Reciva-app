@@ -9,23 +9,26 @@ from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.properties import StringProperty
+from kivy.uix.widget import Widget
 
 from db.connection import get_connection
+from theme import (TINTA, BG, STAGE, CARD, VERMILLON, LADRILLO,
+                   LINE, MUTED, TEXT_SEC, SUCCESS, WARNING, DANGER)
 
-TIPOS  = ['Petición', 'Queja', 'Recurso']
+TIPOS   = ['Petición', 'Queja', 'Recurso']
 ESTADOS = ['Abierto', 'En Proceso', 'Resuelto']
 
 COLOR_ESTADO = {
-    'Abierto':    (0.90, 0.20, 0.20, 1),
-    'En Proceso': (0.90, 0.60, 0.10, 1),
-    'Resuelto':   (0.10, 0.80, 0.30, 1),
+    'Abierto':    DANGER,
+    'En Proceso': WARNING,
+    'Resuelto':   SUCCESS,
 }
 COLOR_TIPO = {
-    'Petición': (0.20, 0.55, 0.90, 1),
-    'Queja':    (0.90, 0.30, 0.30, 1),
-    'Recurso':  (0.80, 0.50, 0.10, 1),
+    'Petición': (0.200, 0.470, 0.820, 1),
+    'Queja':    DANGER,
+    'Recurso':  WARNING,
 }
 
 
@@ -65,8 +68,8 @@ class TicketsScreen(Screen):
             rows = cursor.fetchall()
             self.mensaje = f'{len(rows)} PQR encontradas'
 
-            for row in rows:
-                lista.add_widget(self._fila(*row))
+            for i, row in enumerate(rows):
+                lista.add_widget(self._fila(*row, idx=i))
 
         except Exception as e:
             self.mensaje = f'Error: {e}'
@@ -74,24 +77,25 @@ class TicketsScreen(Screen):
             cursor.close()
             conn.close()
 
-    def _fila(self, pqr_id, nombre, tipo, asunto, estado, fecha):
+    def _fila(self, pqr_id, nombre, tipo, asunto, estado, fecha, idx=0):
         fila = BoxLayout(orientation='horizontal', size_hint_y=None, height=38, spacing=2)
+        bg = CARD if idx % 2 == 0 else STAGE
         with fila.canvas.before:
-            Color(0.11, 0.11, 0.20, 1)
+            Color(*bg)
             rect = Rectangle(pos=fila.pos, size=fila.size)
-        fila.bind(pos=lambda inst, v, r=rect: setattr(r, 'pos', v))
-        fila.bind(size=lambda inst, v, r=rect: setattr(r, 'size', v))
+        fila.bind(pos=lambda _, v, r=rect: setattr(r, 'pos', v))
+        fila.bind(size=lambda _, v, r=rect: setattr(r, 'size', v))
 
-        col_e = COLOR_ESTADO.get(estado, (0.7, 0.7, 0.7, 1))
-        col_t = COLOR_TIPO.get(tipo,   (0.7, 0.7, 0.7, 1))
+        col_e = COLOR_ESTADO.get(estado, MUTED)
+        col_t = COLOR_TIPO.get(tipo,    MUTED)
 
         for txt, sx, col in [
-            (f'#{pqr_id}',           0.06, (0.5, 0.5, 0.5, 1)),
-            ((nombre or '-')[:25],   0.25, (0.9, 0.9, 0.9, 1)),
+            (f'#{pqr_id}',           0.06, MUTED),
+            ((nombre or '-')[:25],   0.25, TINTA),
             (tipo or '-',            0.12, col_t),
-            ((asunto or '-')[:28],   0.26, (0.8, 0.8, 0.8, 1)),
+            ((asunto or '-')[:28],   0.26, TEXT_SEC),
             (estado or '-',          0.13, col_e),
-            (str(fecha),             0.11, (0.6, 0.6, 0.6, 1)),
+            (str(fecha),             0.11, MUTED),
         ]:
             lbl = Label(text=txt, size_hint_x=sx, font_size=12, color=col,
                         halign='left', valign='middle')
@@ -99,7 +103,7 @@ class TicketsScreen(Screen):
             fila.add_widget(lbl)
 
         btn = Button(text='Ver', size_hint_x=0.07, font_size=12,
-                     background_color=(0.2, 0.6, 1, 1))
+                     background_normal='', background_color=VERMILLON, color=(1,1,1,1))
         btn.bind(on_press=lambda _, pid=pqr_id: self._ver_pqr(pid))
         fila.add_widget(btn)
         return fila
@@ -108,62 +112,171 @@ class TicketsScreen(Screen):
     #  Popup: Nueva PQR
     # ------------------------------------------------------------------
     def nueva_pqr(self):
-        content = BoxLayout(orientation='vertical', spacing=8, padding=15)
+        state = {'cuenta': None, 'nombre': None}
 
-        content.add_widget(Label(
-            text='Buscar suscriptor (opcional)',
-            bold=True, color=(0.5, 0.75, 1, 1),
-            size_hint_y=None, height=26
+        def _pill(text, bg, fg=(1, 1, 1, 1), w=120):
+            b = Button(text=text, size_hint_x=None, width=w, font_size=12,
+                       color=fg, background_color=(0, 0, 0, 0),
+                       background_normal='', background_down='')
+            with b.canvas.before:
+                Color(*bg)
+                rr = RoundedRectangle(pos=b.pos, size=b.size, radius=[20])
+            b.bind(pos=lambda _, v, r=rr: setattr(r, 'pos', v),
+                   size=lambda _, v, r=rr: setattr(r, 'size', v))
+            return b
+
+        def _inp(hint, multiline=False, height=38):
+            return TextInput(
+                hint_text=hint, multiline=multiline,
+                size_hint_y=None, height=height,
+                background_color=CARD, foreground_color=TINTA,
+                cursor_color=VERMILLON, hint_text_color=MUTED,
+                padding=[8, 10], font_size=12,
+            )
+
+        # ── Root ──
+        content = BoxLayout(orientation='vertical', spacing=0)
+        with content.canvas.before:
+            Color(*CARD)
+            _bg = Rectangle(pos=content.pos, size=content.size)
+        content.bind(pos=lambda _, v: setattr(_bg, 'pos', v),
+                     size=lambda _, v: setattr(_bg, 'size', v))
+
+        # ── Franja TINTA ──
+        top = BoxLayout(size_hint_y=None, height=52, padding=[18, 0])
+        with top.canvas.before:
+            Color(*TINTA)
+            _top = Rectangle(pos=top.pos, size=top.size)
+        top.bind(pos=lambda _, v: setattr(_top, 'pos', v),
+                 size=lambda _, v: setattr(_top, 'size', v))
+        top.add_widget(Label(
+            text='Nueva PQR', bold=True, font_size=16,
+            color=(1, 1, 1, 1), halign='left', valign='middle',
+        ))
+        content.add_widget(top)
+
+        # ── Body ──
+        body = BoxLayout(orientation='vertical', spacing=10, padding=[18, 12, 18, 0])
+        content.add_widget(body)
+
+        # Sección búsqueda
+        body.add_widget(Label(
+            text='Suscriptor (opcional)', color=VERMILLON, bold=True,
+            font_size=12, size_hint_y=None, height=22,
+            halign='left', valign='middle',
         ))
 
         buscar_box = BoxLayout(size_hint_y=None, height=40, spacing=8)
-        inp_buscar = TextInput(hint_text='Cuenta o nombre...', multiline=False, size_hint_x=0.72)
-        btn_buscar = Button(text='Buscar', size_hint_x=0.28,
-                            background_color=(0.2, 0.6, 1, 1))
-        buscar_box.add_widget(inp_buscar)
+        pill_wrap = BoxLayout(padding=[12, 0, 8, 0])
+        with pill_wrap.canvas.before:
+            Color(1, 1, 1, 1)
+            _pw = RoundedRectangle(pos=pill_wrap.pos, size=pill_wrap.size, radius=[20])
+            Color(*LINE)
+            _pl = RoundedRectangle(pos=(pill_wrap.x+1, pill_wrap.y+1),
+                                   size=(pill_wrap.width-2, pill_wrap.height-2), radius=[19])
+        pill_wrap.bind(
+            pos=lambda _, v, a=_pw, b=_pl: (
+                setattr(a, 'pos', v),
+                setattr(b, 'pos', (v[0]+1, v[1]+1))
+            ),
+            size=lambda _, v, a=_pw, b=_pl: (
+                setattr(a, 'size', v),
+                setattr(b, 'size', (v[0]-2, v[1]-2))
+            ),
+        )
+        inp_buscar = TextInput(
+            hint_text='Cuenta o nombre...', multiline=False,
+            background_color=(0, 0, 0, 0), background_normal='', background_active='',
+            foreground_color=TINTA, cursor_color=VERMILLON,
+            hint_text_color=MUTED, padding=[4, 10], font_size=12,
+        )
+        pill_wrap.add_widget(inp_buscar)
+        buscar_box.add_widget(pill_wrap)
+        btn_buscar = _pill('Buscar', VERMILLON, w=100)
         buscar_box.add_widget(btn_buscar)
-        content.add_widget(buscar_box)
+        body.add_widget(buscar_box)
 
-        res_scroll = ScrollView(size_hint_y=None, height=88)
+        # Resultados
+        res_scroll = ScrollView(size_hint_y=None, height=80)
         res_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=2)
         res_box.bind(minimum_height=res_box.setter('height'))
         res_scroll.add_widget(res_box)
-        content.add_widget(res_scroll)
+        body.add_widget(res_scroll)
 
+        # Suscriptor seleccionado
         lbl_sel = Label(
             text='Sin suscriptor seleccionado',
-            color=(0.55, 0.55, 0.55, 1), italic=True,
-            size_hint_y=None, height=26
+            color=MUTED, italic=True, font_size=11,
+            size_hint_y=None, height=24, halign='left', valign='middle',
         )
-        content.add_widget(lbl_sel)
+        lbl_sel.bind(size=lambda inst, v: setattr(inst, 'text_size', v))
+        body.add_widget(lbl_sel)
 
-        form = GridLayout(cols=2, size_hint_y=None, height=170, spacing=8)
-        form.add_widget(Label(text='Tipo *', color=(0.5, 0.75, 1, 1), halign='right'))
-        sp_tipo = Spinner(text='Queja', values=TIPOS)
-        form.add_widget(sp_tipo)
+        # Separador
+        div = BoxLayout(size_hint_y=None, height=1)
+        with div.canvas.before:
+            Color(*LINE)
+            Rectangle(pos=div.pos, size=div.size)
+        body.add_widget(div)
 
-        form.add_widget(Label(text='Asunto *', color=(0.5, 0.75, 1, 1), halign='right'))
-        inp_asunto = TextInput(hint_text='Describe el asunto brevemente...', multiline=False)
+        # Formulario
+        form = GridLayout(cols=2, size_hint_y=None, spacing=[8, 6])
+        form.bind(minimum_height=form.setter('height'))
+
+        def _lbl_form(text, h=38):
+            l = Label(text=text, color=VERMILLON, bold=True,
+                      halign='right', valign='middle', size_hint_y=None, height=h)
+            l.bind(size=lambda inst, v: setattr(inst, 'text_size', v))
+            return l
+
+        # Tipo
+        form.add_widget(_lbl_form('Tipo *'))
+        sp_wrap = BoxLayout(size_hint_y=None, height=38)
+        with sp_wrap.canvas.before:
+            Color(*STAGE)
+            _sw = Rectangle(pos=sp_wrap.pos, size=sp_wrap.size)
+        sp_wrap.bind(pos=lambda _, v, r=_sw: setattr(r, 'pos', v),
+                     size=lambda _, v, r=_sw: setattr(r, 'size', v))
+        sp_tipo = Spinner(text='Queja', values=TIPOS,
+                          background_color=(0, 0, 0, 0), background_normal='',
+                          color=TINTA, font_size=12)
+        sp_wrap.add_widget(sp_tipo)
+        form.add_widget(sp_wrap)
+
+        form.add_widget(_lbl_form('Asunto *'))
+        inp_asunto = _inp('Describe el asunto brevemente...')
         form.add_widget(inp_asunto)
 
-        form.add_widget(Label(text='Descripción', color=(0.5, 0.75, 1, 1), halign='right'))
-        inp_desc = TextInput(hint_text='Detalle adicional...', multiline=True)
+        form.add_widget(_lbl_form('Descripción', h=72))
+        inp_desc = _inp('Detalle adicional...', multiline=True, height=72)
         form.add_widget(inp_desc)
-        content.add_widget(form)
 
-        lbl_err = Label(text='', color=(1, 0.3, 0.3, 1), size_hint_y=None, height=24)
-        content.add_widget(lbl_err)
+        body.add_widget(form)
 
-        btns = BoxLayout(size_hint_y=None, height=42, spacing=10)
-        btn_guardar  = Button(text='Guardar PQR',  background_color=(0.1, 0.7, 0.4, 1))
-        btn_cancelar = Button(text='Cancelar', background_color=(0.35, 0.35, 0.35, 1))
-        btns.add_widget(btn_guardar)
-        btns.add_widget(btn_cancelar)
-        content.add_widget(btns)
+        lbl_err = Label(text='', color=DANGER, font_size=11,
+                        size_hint_y=None, height=22)
+        body.add_widget(lbl_err)
 
-        popup = Popup(title='Nueva PQR', content=content, size_hint=(0.68, 0.88))
-        state = {'cuenta': None, 'nombre': None}
+        # ── Pie ──
+        pie = BoxLayout(size_hint_y=None, height=52, spacing=10, padding=[0, 8])
+        with pie.canvas.before:
+            Color(*STAGE)
+            _pie = Rectangle(pos=pie.pos, size=pie.size)
+        pie.bind(pos=lambda _, v: setattr(_pie, 'pos', v),
+                 size=lambda _, v: setattr(_pie, 'size', v))
+        pie.add_widget(Widget())
+        btn_guardar  = _pill('Guardar PQR', SUCCESS, w=130)
+        btn_cancelar = _pill('Cancelar', LINE, fg=TINTA)
+        pie.add_widget(btn_guardar)
+        pie.add_widget(btn_cancelar)
+        body.add_widget(pie)
 
+        popup = Popup(
+            title='', content=content, size_hint=(0.62, 0.88),
+            background_color=CARD, separator_height=0,
+        )
+
+        # ── Lógica ──
         def buscar(_):
             res_box.clear_widgets()
             texto = inp_buscar.text.strip()
@@ -181,18 +294,30 @@ class TicketsScreen(Screen):
                     LIMIT 8
                 """, (like, like))
                 for cuenta, nombre in cur.fetchall():
+                    fila = BoxLayout(size_hint_y=None, height=32, spacing=0)
+                    with fila.canvas.before:
+                        Color(*STAGE)
+                        _fr = Rectangle(pos=fila.pos, size=fila.size)
+                    fila.bind(pos=lambda _, v, r=_fr: setattr(r, 'pos', v),
+                              size=lambda _, v, r=_fr: setattr(r, 'size', v))
                     b = Button(
-                        text=f'{cuenta}  —  {nombre}',
-                        size_hint_y=None, height=30,
-                        background_color=(0.15, 0.15, 0.3, 1), font_size=12
+                        text=f'#{cuenta}  —  {nombre}',
+                        font_size=12, color=TINTA,
+                        background_color=(0, 0, 0, 0),
+                        background_normal='', background_down='',
+                        halign='left',
                     )
                     def seleccionar(_, c=cuenta, n=nombre):
                         state['cuenta'] = c
                         state['nombre'] = n
-                        lbl_sel.text = f'Seleccionado: {c} — {n}'
-                        lbl_sel.color = (0.1, 0.9, 0.3, 1)
+                        lbl_sel.text = f'✓  #{c} — {n}'
+                        lbl_sel.color = SUCCESS
+                        lbl_sel.italic = False
+                        lbl_sel.bold = True
+                        res_box.clear_widgets()
                     b.bind(on_press=seleccionar)
-                    res_box.add_widget(b)
+                    fila.add_widget(b)
+                    res_box.add_widget(fila)
             finally:
                 cur.close()
                 conn.close()

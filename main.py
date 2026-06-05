@@ -1,5 +1,6 @@
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, NoTransition
+from kivy.core.text import LabelBase
 from screens.login import LoginScreen
 from screens.dashboard import DashboardScreen
 from screens.importar import ImportarScreen
@@ -7,6 +8,18 @@ from screens.suscriptores import SuscriptoresScreen
 from screens.facturacion import FacturacionScreen
 from screens.tickets import TicketsScreen
 from screens.menu import MenuLateral  # noqa: F401  (registra el widget para el kv)
+
+LabelBase.register(
+    name='Sora',
+    fn_regular='fonts/Sora-SemiBold2.ttf',
+    fn_bold='fonts/Sora-Bold2.ttf',
+)
+LabelBase.register(
+    name='Jakarta',
+    fn_regular='fonts/Jakarta-Regular.ttf',
+    fn_italic='fonts/Jakarta-Medium.ttf',
+    fn_bold='fonts/Jakarta-SemiBold.ttf',
+)
 
 
 class RecivaApp(App):
@@ -25,4 +38,4 @@ class RecivaApp(App):
 
 
 if __name__ == '__main__':
-    RecivaApp().run() 
+    RecivaApp().run()

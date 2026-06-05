@@ -9,6 +9,12 @@ def importar_catastro(filepath):
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
+    cols = set(df.columns)
+    if 'FECHA_RECAUDO' in cols:
+        return False, "Error: este archivo es un RECAUDO, no un catastro."
+    if 'NUMERO_FACTURA' in cols and 'ESTADO_SUMINISTRO' not in cols:
+        return False, "Error: este archivo parece ser una FACTURACIÓN, no un catastro."
+
     conn = get_connection()
     if not conn:
         return False, "Error de conexión"
@@ -84,6 +90,12 @@ def importar_facturacion(filepath):
         df.columns = [c.strip().upper() for c in df.columns]
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
+
+    cols = set(df.columns)
+    if 'FECHA_RECAUDO' in cols:
+        return False, "Error: este archivo es un RECAUDO, no una facturación."
+    if 'ESTADO_SUMINISTRO' in cols:
+        return False, "Error: este archivo es un CATASTRO, no una facturación."
 
     conn = get_connection()
     if not conn:
@@ -164,6 +176,12 @@ def importar_recaudo(filepath):
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
+    cols = set(df.columns)
+    if 'FECHA_RECAUDO' not in cols:
+        if 'ESTADO_SUMINISTRO' in cols:
+            return False, "Error: este archivo es un CATASTRO, no un recaudo."
+        return False, "Error: este archivo no parece un recaudo (falta columna FECHA_RECAUDO)."
+
     conn = get_connection()
     if not conn:
         return False, "Error de conexión"
@@ -171,8 +189,19 @@ def importar_recaudo(filepath):
     cursor = conn.cursor()
     try:
         # Cargamos claves existentes para prevenir reimportación del mismo archivo
+        # Claves con numero_factura
         cursor.execute("SELECT numero_factura, fecha_recaudo FROM recaudos WHERE numero_factura IS NOT NULL")
-        existentes = {(row[0], str(row[1])) for row in cursor.fetchall()}
+        existentes_nf = {(row[0], str(row[1])) for row in cursor.fetchall()}
+
+        # Claves alternativas para recaudos sin numero_factura
+        cursor.execute("""
+            SELECT susccodi, cuenta_contrato, año, mes, valor_recibo
+            FROM recaudos WHERE numero_factura IS NULL
+        """)
+        existentes_alt = {
+            (row[0], row[1], row[2], str(row[3]), float(row[4]))
+            for row in cursor.fetchall()
+        }
 
         para_insertar = []
         omitidos = 0
@@ -205,10 +234,20 @@ def importar_recaudo(filepath):
                     except Exception:
                         numero_factura = None
 
-                clave = (numero_factura, str(fecha_rec))
-                if numero_factura and clave in existentes:
-                    omitidos += 1
-                    continue
+                if numero_factura:
+                    clave = (numero_factura, str(fecha_rec))
+                    if clave in existentes_nf:
+                        omitidos += 1
+                        continue
+                else:
+                    cuenta = int(float(str(row.get('CUENTA_CONTRATO', 0) or 0)))
+                    año_val = int(row.get('AÑO', 0) or 0)
+                    mes_val = s(row.get('MES'), 20)
+                    valor   = float(row.get('VALOR_RECIBO', 0) or 0)
+                    clave_alt = (susccodi, cuenta, año_val, mes_val, valor)
+                    if clave_alt in existentes_alt:
+                        omitidos += 1
+                        continue
 
                 para_insertar.append((
                     susccodi,
@@ -228,7 +267,9 @@ def importar_recaudo(filepath):
                     s(row.get('MES'), 20),
                 ))
                 if numero_factura:
-                    existentes.add(clave)
+                    existentes_nf.add(clave)
+                else:
+                    existentes_alt.add(clave_alt)
 
             except Exception:
                 omitidos += 1

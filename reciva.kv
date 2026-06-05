@@ -1,127 +1,387 @@
+# ============================================================
+#  Reciva — Design System «Recibo»
+#  Paleta: vermellón #E94E2C · tinta #1B1512 · crema #F1EAE1
+# ============================================================
+
+# --- Estilos globales ---
+<Label>:
+    font_name: 'Jakarta'
+
+<Button>:
+    font_name: 'Jakarta'
+
+<TextInput>:
+    font_name: 'Jakarta'
+    foreground_color: 0.106, 0.082, 0.071, 1
+    background_color: 1, 1, 1, 1
+    background_active: ''
+    cursor_color: 0.914, 0.306, 0.173, 1
+    hint_text_color: 0.549, 0.502, 0.467, 1
+    padding: [12, 10]
+
+<Spinner>:
+    font_name: 'Jakarta'
+    color: 0.106, 0.082, 0.071, 1
+    background_color: 1, 1, 1, 1
+    background_normal: ''
+
+# ============================================================
+#  MENU LATERAL
+# ============================================================
 <MenuLateral>:
     orientation: 'vertical'
-    size_hint_x: 0.22
+    size_hint_x: 0.2
+    spacing: 0
+    padding: 0
+
     canvas.before:
         Color:
-            rgba: 0.1, 0.1, 0.2, 1
+            rgba: 0.106, 0.082, 0.071, 1
         Rectangle:
             pos: self.pos
             size: self.size
-    padding: 10
-    spacing: 8
 
-    Label:
-        text: 'RECIVA'
-        font_size: 22
-        bold: True
-        color: 0.2, 0.6, 1, 1
+    # Header — logo
+    BoxLayout:
         size_hint_y: None
-        height: 50
+        height: 72
+        padding: [14, 10]
+        canvas.before:
+            Color:
+                rgba: 0.082, 0.063, 0.055, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        Image:
+            source: 'logo_png/05-logo-blanco.png'
+            fit_mode: 'contain'
+            halign: 'left'
+            allow_stretch: True
+            keep_ratio: True
 
     Widget:
         size_hint_y: None
-        height: 16
+        height: 1
+        canvas.before:
+            Color:
+                rgba: 0.906, 0.863, 0.812, 0.12
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+    Widget:
+        size_hint_y: None
+        height: 10
 
     Button:
         text: 'Dashboard'
         size_hint_y: None
-        height: 42
-        background_color: 0.2, 0.6, 1, 1
+        height: 44
+        background_normal: ''
+        background_color: (0.914, 0.306, 0.173, 1) if root.pantalla_actual == 'dashboard' else (0.145, 0.110, 0.094, 1)
+        color: 1, 1, 1, 1
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.ir_a('dashboard')
 
     Button:
         text: 'Suscriptores'
         size_hint_y: None
-        height: 42
-        background_color: 0.15, 0.15, 0.3, 1
+        height: 44
+        background_normal: ''
+        background_color: (0.914, 0.306, 0.173, 1) if root.pantalla_actual == 'suscriptores' else (0.145, 0.110, 0.094, 1)
+        color: (1, 1, 1, 1) if root.pantalla_actual == 'suscriptores' else (0.906, 0.863, 0.812, 1)
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.ir_a('suscriptores')
 
     Button:
         text: 'Facturación'
         size_hint_y: None
-        height: 42
-        background_color: 0.15, 0.15, 0.3, 1
+        height: 44
+        background_normal: ''
+        background_color: (0.914, 0.306, 0.173, 1) if root.pantalla_actual == 'facturacion' else (0.145, 0.110, 0.094, 1)
+        color: (1, 1, 1, 1) if root.pantalla_actual == 'facturacion' else (0.906, 0.863, 0.812, 1)
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.ir_a('facturacion')
 
     Button:
         text: 'Tickets / PQR'
         size_hint_y: None
-        height: 42
-        background_color: 0.15, 0.15, 0.3, 1
+        height: 44
+        background_normal: ''
+        background_color: (0.914, 0.306, 0.173, 1) if root.pantalla_actual == 'tickets' else (0.145, 0.110, 0.094, 1)
+        color: (1, 1, 1, 1) if root.pantalla_actual == 'tickets' else (0.906, 0.863, 0.812, 1)
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.ir_a('tickets')
 
     Button:
         text: 'Importar'
         size_hint_y: None
-        height: 42
-        background_color: 0.15, 0.15, 0.3, 1
+        height: 44
+        background_normal: ''
+        background_color: (0.914, 0.306, 0.173, 1) if root.pantalla_actual == 'importar' else (0.145, 0.110, 0.094, 1)
+        color: (1, 1, 1, 1) if root.pantalla_actual == 'importar' else (0.906, 0.863, 0.812, 1)
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.ir_a('importar')
 
     Widget
 
+    Widget:
+        size_hint_y: None
+        height: 1
+        canvas.before:
+            Color:
+                rgba: 0.906, 0.863, 0.812, 0.12
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
     Button:
         text: 'Cerrar Sesión'
         size_hint_y: None
-        height: 42
-        background_color: 0.8, 0.2, 0.2, 1
+        height: 44
+        background_normal: ''
+        background_color: 0.753, 0.227, 0.129, 1
+        color: 1, 1, 1, 1
+        font_size: 13
+        halign: 'left'
+        text_size: self.width - 40, None
+        padding: [20, 0]
         on_press: root.cerrar_sesion()
 
+# ============================================================
+#  LOGIN
+# ============================================================
 <LoginScreen>:
-    BoxLayout:
-        orientation: 'vertical'
-        padding: 60
-        spacing: 18
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
 
-        Label:
-            text: 'RECIVA'
-            font_size: 36
-            bold: True
-            color: 0.2, 0.6, 1, 1
-            size_hint_y: None
-            height: 65
-
-        Label:
-            text: 'Sistema de Gestión'
-            font_size: 15
-            color: 0.6, 0.6, 0.6, 1
-            size_hint_y: None
-            height: 28
-
+    FloatLayout:
+        # ── Acento decorativo superior ──
         Widget:
-            size_hint_y: None
-            height: 14
+            size_hint: None, None
+            size: 80, 80
+            pos_hint: {'center_x': 0.5, 'top': 0.78}
+            canvas.before:
+                Color:
+                    rgba: 0.914, 0.306, 0.173, 0.08
+                Ellipse:
+                    pos: self.pos
+                    size: self.size
 
-        TextInput:
-            id: email
-            hint_text: 'Correo electrónico'
-            size_hint_y: None
-            height: 46
-            multiline: False
+        # ── Card central ──
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint: 0.36, None
+            height: 430
+            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+            spacing: 0
+            padding: [40, 36, 40, 32]
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+                Color:
+                    rgba: 0.906, 0.863, 0.812, 0.6
+                Line:
+                    rounded_rectangle: self.x, self.y, self.width, self.height, 16
+                    width: 1
 
-        TextInput:
-            id: password
-            hint_text: 'Contraseña'
-            password: True
-            size_hint_y: None
-            height: 46
-            multiline: False
+            # Logo
+            Image:
+                source: 'logo_png/01-logo-horizontal.png'
+                fit_mode: 'contain'
+                allow_stretch: True
+                keep_ratio: True
+                size_hint_y: None
+                height: 58
 
-        Label:
-            text: root.error_msg
-            color: 1, 0.3, 0.3, 1
-            size_hint_y: None
-            height: 28
+            Widget:
+                size_hint_y: None
+                height: 6
 
-        Button:
-            text: 'Iniciar Sesión'
-            size_hint_y: None
-            height: 46
-            background_color: 0.2, 0.6, 1, 1
-            on_press: root.do_login(email.text, password.text)
+            Label:
+                text: 'Inicia sesión para continuar'
+                font_name: 'Jakarta'
+                font_size: 11
+                color: 0.549, 0.502, 0.467, 1
+                size_hint_y: None
+                height: 18
+                halign: 'center'
+                text_size: self.size
 
-        Widget
+            Widget:
+                size_hint_y: None
+                height: 28
 
+            # ── Campo email — underline style ──
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 58
+                spacing: 0
+
+                Label:
+                    text: 'Correo electrónico'
+                    font_name: 'Jakarta'
+                    font_size: 10
+                    color: 0.549, 0.502, 0.467, 1
+                    size_hint_y: None
+                    height: 16
+                    halign: 'left'
+                    text_size: self.size
+
+                TextInput:
+                    id: email
+                    hint_text: 'usuario@correo.com'
+                    multiline: False
+                    size_hint_y: None
+                    height: 38
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_active: ''
+                    foreground_color: 0.106, 0.082, 0.071, 1
+                    cursor_color: 0.914, 0.306, 0.173, 1
+                    hint_text_color: 0.753, 0.710, 0.675, 1
+                    padding: [2, 8, 2, 6]
+                    font_size: 13
+                    canvas.after:
+                        Color:
+                            rgba: (0.914, 0.306, 0.173, 1) if self.focus else (0.906, 0.863, 0.812, 1)
+                        Line:
+                            points: self.x, self.y + 2, self.x + self.width, self.y + 2
+                            width: 1.4
+
+            Widget:
+                size_hint_y: None
+                height: 16
+
+            # ── Campo contraseña — underline style ──
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 58
+                spacing: 0
+
+                Label:
+                    text: 'Contraseña'
+                    font_name: 'Jakarta'
+                    font_size: 10
+                    color: 0.549, 0.502, 0.467, 1
+                    size_hint_y: None
+                    height: 16
+                    halign: 'left'
+                    text_size: self.size
+
+                TextInput:
+                    id: password
+                    hint_text: '••••••••'
+                    password: True
+                    multiline: False
+                    size_hint_y: None
+                    height: 38
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_active: ''
+                    foreground_color: 0.106, 0.082, 0.071, 1
+                    cursor_color: 0.914, 0.306, 0.173, 1
+                    hint_text_color: 0.753, 0.710, 0.675, 1
+                    padding: [2, 8, 2, 6]
+                    font_size: 13
+                    canvas.after:
+                        Color:
+                            rgba: (0.914, 0.306, 0.173, 1) if self.focus else (0.906, 0.863, 0.812, 1)
+                        Line:
+                            points: self.x, self.y + 2, self.x + self.width, self.y + 2
+                            width: 1.4
+                    on_text_validate: root.do_login(email.text, self.text)
+
+            Widget:
+                size_hint_y: None
+                height: 10
+
+            # Error
+            Label:
+                text: root.error_msg
+                font_name: 'Jakarta'
+                font_size: 10.5
+                color: 0.914, 0.306, 0.173, 1
+                size_hint_y: None
+                height: 20
+                halign: 'center'
+                text_size: self.size
+
+            Widget:
+                size_hint_y: None
+                height: 14
+
+            # ── Botón pill ──
+            Button:
+                text: 'Iniciar sesión'
+                font_name: 'Sora'
+                font_size: 13
+                size_hint_y: None
+                height: 48
+                color: 1, 1, 1, 1
+                background_color: 0, 0, 0, 0
+                background_normal: ''
+                background_down: ''
+                canvas.before:
+                    Color:
+                        rgba: (0.753, 0.227, 0.129, 1) if self.state == 'down' else (0.914, 0.306, 0.173, 1)
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [24]
+                on_press: root.do_login(email.text, password.text)
+
+            Widget:
+                size_hint_y: None
+                height: 18
+
+            # Footer
+            Label:
+                text: 'INGESAM · Hatonuevo, La Guajira'
+                font_name: 'Jakarta'
+                font_size: 9
+                color: 0.753, 0.710, 0.675, 1
+                size_hint_y: None
+                height: 16
+                halign: 'center'
+                text_size: self.size
+
+# ============================================================
+#  DASHBOARD
+# ============================================================
 <DashboardScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
     BoxLayout:
         orientation: 'horizontal'
 
@@ -130,115 +390,301 @@
 
         BoxLayout:
             orientation: 'vertical'
-            padding: 24
-            spacing: 14
+            padding: [28, 24]
+            spacing: 18
 
             Label:
-                text: 'Panel Principal — ' + root.usuario_nombre
+                text: 'Panel Principal'
+                font_name: 'Sora'
                 font_size: 22
                 bold: True
-                color: 0.2, 0.6, 1, 1
+                color: 0.106, 0.082, 0.071, 1
+                size_hint_y: None
+                height: 36
+                halign: 'left'
+                text_size: self.size
+
+            Label:
+                text: 'Bienvenido, ' + root.usuario_nombre
+                font_size: 13
+                color: 0.549, 0.502, 0.467, 1
+                size_hint_y: None
+                height: 22
+                halign: 'left'
+                text_size: self.size
+
+            # ── Selector de período ──
+            BoxLayout:
                 size_hint_y: None
                 height: 42
-
-            GridLayout:
-                cols: 3
                 spacing: 10
-                size_hint_y: None
-                height: 105
+
+                Label:
+                    text: root.periodo_label
+                    font_size: 12
+                    bold: True
+                    color: 0.106, 0.082, 0.071, 1
+                    size_hint_x: None
+                    width: 180
+                    halign: 'left'
+                    text_size: self.size
 
                 BoxLayout:
+                    size_hint_x: None
+                    width: 110
                     canvas.before:
                         Color:
-                            rgba: 0.1, 0.35, 0.7, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: dash_año
+                        text: 'Año'
+                        values: root.años_disponibles
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
+                        on_text: root.cambiar_periodo(self.text, dash_mes.text)
+
+                BoxLayout:
+                    size_hint_x: None
+                    width: 100
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: dash_mes
+                        text: 'Mes'
+                        values: root.meses_disponibles
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
+                        on_text: root.cambiar_periodo(dash_año.text, self.text)
+
+                Widget
+
+            # Fila 1 — suscriptores, facturado, recaudado
+            GridLayout:
+                cols: 3
+                spacing: 14
+                size_hint_y: None
+                height: 110
+
+                # Suscriptores (clickeable → barrios)
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     on_touch_down: if self.collide_point(*args[1].pos): root.popup_barrios()
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.106, 0.082, 0.071, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Suscriptores\n' + root.total_suscriptores + '\n[size=11][color=aaddff]▶ ver por barrio[/color][/size]'
+                        text: root.total_suscriptores
+                        font_size: 26
+                        bold: True
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Suscriptores  [size=11][color=8c8077]▶ por barrio[/color][/size]'
                         markup: True
-                        halign: 'center'
-                        bold: True
-                        font_size: 15
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     canvas.before:
                         Color:
-                            rgba: 0.08, 0.45, 0.22, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.122, 0.533, 0.220, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Total Facturado\n' + root.total_facturado
-                        halign: 'center'
+                        text: root.total_facturado
+                        font_size: 26
                         bold: True
-                        font_size: 15
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Total Facturado'
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     canvas.before:
                         Color:
-                            rgba: 0.08, 0.3, 0.55, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.200, 0.470, 0.820, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Total Recaudado\n' + root.total_recaudado
-                        halign: 'center'
+                        text: root.total_recaudado
+                        font_size: 26
                         bold: True
-                        font_size: 15
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Total Recaudado'
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
+            # Fila 2 — deuda, con deuda, PQR
             GridLayout:
                 cols: 3
-                spacing: 10
+                spacing: 14
                 size_hint_y: None
-                height: 105
+                height: 110
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     canvas.before:
                         Color:
-                            rgba: 0.55, 0.12, 0.12, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.914, 0.306, 0.173, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Deuda Total\n' + root.deuda_total
-                        halign: 'center'
+                        text: root.deuda_total
+                        font_size: 26
                         bold: True
-                        font_size: 15
-                        color: 1, 0.85, 0.85, 1
+                        color: 0.914, 0.306, 0.173, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Deuda Total'
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     canvas.before:
                         Color:
-                            rgba: 0.45, 0.2, 0.05, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.753, 0.227, 0.129, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Con Deuda\n' + root.sus_con_deuda + ' suscriptores'
-                        halign: 'center'
+                        text: root.sus_con_deuda
+                        font_size: 26
                         bold: True
-                        font_size: 14
-                        color: 1, 0.9, 0.8, 1
+                        color: 0.753, 0.227, 0.129, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Con Deuda'
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 12]
                     canvas.before:
                         Color:
-                            rgba: 0.35, 0.15, 0.45, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.435, 0.212, 0.682, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'PQR Sin Resolver\n' + root.pqr_abiertas
-                        halign: 'center'
+                        text: root.pqr_abiertas
+                        font_size: 26
                         bold: True
-                        font_size: 15
-                        color: 0.95, 0.85, 1, 1
+                        color: 0.435, 0.212, 0.682, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'PQR Sin Resolver'
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
             Widget
 
+# ============================================================
+#  IMPORTAR
+# ============================================================
 <ImportarScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
     BoxLayout:
         orientation: 'horizontal'
 
@@ -247,64 +693,92 @@
 
         BoxLayout:
             orientation: 'vertical'
-            padding: 30
-            spacing: 20
+            padding: [40, 32]
+            spacing: 18
 
             Label:
                 text: 'Importar Archivos Excel'
+                font_name: 'Sora'
                 font_size: 22
                 bold: True
-                color: 0.2, 0.6, 1, 1
+                color: 0.106, 0.082, 0.071, 1
                 size_hint_y: None
-                height: 40
+                height: 36
+                halign: 'left'
+                text_size: self.size
 
             Label:
-                text: 'Selecciona el tipo de archivo a importar'
-                color: 0.7, 0.7, 0.7, 1
+                text: 'Selecciona el tipo de archivo Excel a importar'
+                font_size: 13
+                color: 0.549, 0.502, 0.467, 1
                 size_hint_y: None
-                height: 28
+                height: 24
+                halign: 'left'
+                text_size: self.size
+
+            Widget:
+                size_hint_y: None
+                height: 8
 
             GridLayout:
                 cols: 1
-                spacing: 15
-                size_hint_y: None
-                height: 210
-                padding: [50, 0]
+                spacing: 12
+                size_hint: 0.55, None
+                height: 196
+                pos_hint: {'center_x': 0.5}
 
                 Button:
-                    text: 'Importar Catastro (suscriptores)'
-                    font_size: 16
+                    text: 'Importar Catastro  (suscriptores)'
+                    font_size: 14
                     size_hint_y: None
-                    height: 55
-                    background_color: 0.1, 0.5, 0.9, 1
+                    height: 56
+                    background_normal: ''
+                    background_color: 0.106, 0.082, 0.071, 1
+                    color: 1, 1, 1, 1
                     on_press: root.seleccionar_archivo('catastro')
 
                 Button:
                     text: 'Importar Facturación'
-                    font_size: 16
+                    font_size: 14
                     size_hint_y: None
-                    height: 55
-                    background_color: 0.1, 0.7, 0.4, 1
+                    height: 56
+                    background_normal: ''
+                    background_color: 0.914, 0.306, 0.173, 1
+                    color: 1, 1, 1, 1
                     on_press: root.seleccionar_archivo('facturacion')
 
                 Button:
                     text: 'Importar Recaudo'
-                    font_size: 16
+                    font_size: 14
                     size_hint_y: None
-                    height: 55
-                    background_color: 0.7, 0.5, 0.1, 1
+                    height: 56
+                    background_normal: ''
+                    background_color: 0.753, 0.227, 0.129, 1
+                    color: 1, 1, 1, 1
                     on_press: root.seleccionar_archivo('recaudo')
 
             Label:
                 text: root.mensaje
-                font_size: 15
+                font_size: 13
                 color: root.color_msg
                 size_hint_y: None
-                height: 40
+                height: 36
+                halign: 'center'
+                text_size: self.size
 
             Widget
 
+# ============================================================
+#  SUSCRIPTORES
+# ============================================================
 <SuscriptoresScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
     BoxLayout:
         orientation: 'horizontal'
 
@@ -313,61 +787,141 @@
 
         BoxLayout:
             orientation: 'vertical'
-            padding: 20
-            spacing: 10
+            padding: [24, 20]
+            spacing: 12
 
             Label:
                 text: 'Suscriptores'
+                font_name: 'Sora'
                 font_size: 22
                 bold: True
-                color: 0.2, 0.6, 1, 1
+                color: 0.106, 0.082, 0.071, 1
                 size_hint_y: None
-                height: 40
+                height: 36
+                halign: 'left'
+                text_size: self.size
 
+            # Barra de búsqueda
             BoxLayout:
                 size_hint_y: None
                 height: 42
                 spacing: 10
 
-                TextInput:
-                    id: inp_buscar
-                    hint_text: 'Buscar por número de cuenta o nombre...'
-                    multiline: False
-                    size_hint_x: 0.48
-                    on_text_validate: root.buscar(self.text)
+                # ── Pill de búsqueda ──
+                BoxLayout:
+                    size_hint_x: 0.52
+                    spacing: 0
+                    padding: [14, 0, 8, 0]
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
 
+                    Label:
+                        text: '⌕'
+                        font_size: 17
+                        color: 0.549, 0.502, 0.467, 1
+                        size_hint_x: None
+                        width: 24
+
+                    TextInput:
+                        id: inp_buscar
+                        hint_text: 'Buscar por cuenta o nombre…'
+                        multiline: False
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        background_active: ''
+                        foreground_color: 0.106, 0.082, 0.071, 1
+                        cursor_color: 0.914, 0.306, 0.173, 1
+                        hint_text_color: 0.753, 0.710, 0.675, 1
+                        padding: [6, 11, 4, 0]
+                        font_size: 12
+                        on_text_validate: root.buscar(self.text)
+
+                # ── Buscar ──
                 Button:
                     text: 'Buscar'
-                    size_hint_x: 0.14
-                    background_color: 0.2, 0.6, 1, 1
+                    size_hint_x: 0.13
+                    font_size: 12
+                    color: 1, 1, 1, 1
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_down: ''
+                    canvas.before:
+                        Color:
+                            rgba: (0.753, 0.227, 0.129, 1) if self.state == 'down' else (0.914, 0.306, 0.173, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
                     on_press: root.buscar(inp_buscar.text)
 
+                # ── Mostrar todos ──
                 Button:
-                    text: 'Mostrar todos'
-                    size_hint_x: 0.18
-                    background_color: 0.15, 0.15, 0.3, 1
+                    text: 'Ver todos'
+                    size_hint_x: 0.15
+                    font_size: 12
+                    color: 0.106, 0.082, 0.071, 1
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_down: ''
+                    canvas.before:
+                        Color:
+                            rgba: (0.945, 0.918, 0.882, 1) if self.state == 'down' else (1, 1, 1, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
                     on_press: root.mostrar_todos()
 
+                # ── + Nuevo ──
                 Button:
                     text: '+ Nuevo'
                     size_hint_x: 0.2
-                    background_color: 0.1, 0.65, 0.35, 1
+                    font_size: 12
+                    color: 1, 1, 1, 1
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_down: ''
+                    canvas.before:
+                        Color:
+                            rgba: (0.090, 0.430, 0.170, 1) if self.state == 'down' else (0.122, 0.533, 0.220, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
                     on_press: root.nuevo_suscriptor()
 
             Label:
                 text: root.mensaje
-                color: 0.55, 0.55, 0.55, 1
+                color: 0.549, 0.502, 0.467, 1
                 size_hint_y: None
-                height: 22
-                font_size: 13
+                height: 20
+                font_size: 12
+                halign: 'left'
+                text_size: self.size
 
+            # Encabezado tabla
             BoxLayout:
                 size_hint_y: None
-                height: 34
+                height: 32
                 spacing: 2
                 canvas.before:
                     Color:
-                        rgba: 0.15, 0.15, 0.3, 1
+                        rgba: 0.106, 0.082, 0.071, 1
                     Rectangle:
                         pos: self.pos
                         size: self.size
@@ -375,33 +929,39 @@
                 Label:
                     text: 'Cuenta'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.18
+                    font_size: 12
                 Label:
                     text: 'Nombre'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.36
+                    font_size: 12
                 Label:
                     text: 'Barrio'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.18
+                    font_size: 12
                 Label:
                     text: 'Estrato'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.09
+                    font_size: 12
                 Label:
                     text: 'Estado'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.12
+                    font_size: 12
                 Label:
                     text: 'Ver'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.07
+                    font_size: 12
 
             ScrollView:
                 BoxLayout:
@@ -409,9 +969,19 @@
                     orientation: 'vertical'
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: 3
+                    spacing: 1
 
+# ============================================================
+#  FACTURACIÓN
+# ============================================================
 <FacturacionScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
     BoxLayout:
         orientation: 'horizontal'
 
@@ -420,92 +990,199 @@
 
         BoxLayout:
             orientation: 'vertical'
-            padding: 20
-            spacing: 10
+            padding: [24, 20]
+            spacing: 12
 
             Label:
                 text: 'Facturación por Período'
+                font_name: 'Sora'
                 font_size: 22
                 bold: True
-                color: 0.2, 0.6, 1, 1
+                color: 0.106, 0.082, 0.071, 1
                 size_hint_y: None
-                height: 40
+                height: 36
+                halign: 'left'
+                text_size: self.size
 
+            # Filtros
             BoxLayout:
                 size_hint_y: None
                 height: 42
                 spacing: 10
 
-                Spinner:
-                    id: spinner_año
-                    text: 'Año'
-                    values: []
-                    size_hint_x: 0.15
+                # ── Spinner Año ──
+                BoxLayout:
+                    size_hint_x: 0.13
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: spinner_año
+                        text: 'Año'
+                        values: []
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
 
-                Spinner:
-                    id: spinner_mes
-                    text: 'Mes'
-                    values: []
+                # ── Spinner Mes ──
+                BoxLayout:
                     size_hint_x: 0.12
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: spinner_mes
+                        text: 'Mes'
+                        values: []
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
 
+                # ── Consultar ──
                 Button:
                     text: 'Consultar'
-                    size_hint_x: 0.18
-                    background_color: 0.2, 0.6, 1, 1
+                    size_hint_x: 0.15
+                    font_size: 12
+                    color: 1, 1, 1, 1
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_down: ''
+                    canvas.before:
+                        Color:
+                            rgba: (0.753, 0.227, 0.129, 1) if self.state == 'down' else (0.914, 0.306, 0.173, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
                     on_press: root.consultar()
 
                 Label:
                     text: root.mensaje
-                    color: 0.6, 0.6, 0.6, 1
-                    font_size: 13
+                    color: 0.549, 0.502, 0.467, 1
+                    font_size: 11
+                    halign: 'left'
+                    text_size: self.size
 
+            # Tarjetas resumen
             GridLayout:
                 cols: 3
                 size_hint_y: None
-                height: 85
-                spacing: 10
+                height: 92
+                spacing: 14
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 10]
                     canvas.before:
                         Color:
-                            rgba: 0.1, 0.3, 0.6, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.122, 0.533, 0.220, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Facturado\n' + root.total_facturado
-                        halign: 'center'
+                        text: root.total_facturado
+                        font_size: 20
                         bold: True
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Facturado'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 10]
                     canvas.before:
                         Color:
-                            rgba: 0.08, 0.45, 0.2, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.200, 0.470, 0.820, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Recaudado\n' + root.total_recaudado
-                        halign: 'center'
+                        text: root.total_recaudado
+                        font_size: 20
                         bold: True
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Recaudado'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
                 BoxLayout:
+                    orientation: 'vertical'
+                    padding: [16, 10]
                     canvas.before:
                         Color:
-                            rgba: 0.55, 0.12, 0.12, 1
-                        Rectangle:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
                             pos: self.pos
                             size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.914, 0.306, 0.173, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
                     Label:
-                        text: 'Deuda del período\n' + root.deuda_periodo
-                        halign: 'center'
+                        text: root.deuda_periodo
+                        font_size: 20
                         bold: True
-                        color: 1, 0.85, 0.85, 1
+                        color: 0.914, 0.306, 0.173, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Deuda del período'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
+            # Tablas
             BoxLayout:
                 orientation: 'horizontal'
-                spacing: 12
+                spacing: 16
 
+                # Estrato
                 BoxLayout:
                     orientation: 'vertical'
                     size_hint_x: 0.28
@@ -513,54 +1190,115 @@
                     Label:
                         text: 'Por estrato'
                         bold: True
-                        color: 0.2, 0.6, 1, 1
+                        color: 0.106, 0.082, 0.071, 1
                         size_hint_y: None
-                        height: 28
+                        height: 26
+                        halign: 'left'
+                        text_size: self.size
+                        font_size: 13
 
                     BoxLayout:
                         size_hint_y: None
                         height: 28
                         canvas.before:
                             Color:
-                                rgba: 0.15, 0.15, 0.3, 1
+                                rgba: 0.106, 0.082, 0.071, 1
                             Rectangle:
                                 pos: self.pos
                                 size: self.size
                         Label:
                             text: 'Estrato'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            font_size: 11
                         Label:
                             text: 'Facturas'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            font_size: 11
                         Label:
                             text: 'Total'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            font_size: 11
 
                     ScrollView:
                         GridLayout:
                             id: tabla_estratos
                             cols: 3
                             size_hint_y: None
-                            row_default_height: 30
+                            row_default_height: 28
                             row_force_default: True
                             height: self.minimum_height
 
+                # Pendientes
                 BoxLayout:
                     orientation: 'vertical'
                     size_hint_x: 0.72
 
-                    Label:
-                        text: 'Pendientes de pago'
-                        bold: True
-                        color: 1, 0.4, 0.4, 1
+                    # Título + búsqueda + filtro barrio
+                    BoxLayout:
                         size_hint_y: None
-                        height: 28
+                        height: 38
+                        spacing: 8
+
+                        Label:
+                            text: 'Pendientes de pago'
+                            bold: True
+                            color: 0.914, 0.306, 0.173, 1
+                            halign: 'left'
+                            text_size: self.size
+                            font_size: 13
+                            size_hint_x: None
+                            width: 160
+
+                        BoxLayout:
+                            canvas.before:
+                                Color:
+                                    rgba: 1, 1, 1, 1
+                                RoundedRectangle:
+                                    pos: self.pos
+                                    size: self.size
+                                    radius: [16]
+                                Color:
+                                    rgba: 0.906, 0.863, 0.812, 1
+                                Line:
+                                    rounded_rectangle: self.x, self.y, self.width, self.height, 16
+                                    width: 1
+                            TextInput:
+                                id: buscador_pendiente
+                                hint_text: '⌕  nombre o cuenta…'
+                                background_color: 0, 0, 0, 0
+                                foreground_color: 0.106, 0.082, 0.071, 1
+                                multiline: False
+                                font_size: 12
+                                padding: [12, 10]
+                                on_text: root.buscar_pendiente(self.text)
+
+                        BoxLayout:
+                            size_hint_x: None
+                            width: 148
+                            canvas.before:
+                                Color:
+                                    rgba: 1, 1, 1, 1
+                                RoundedRectangle:
+                                    pos: self.pos
+                                    size: self.size
+                                    radius: [16]
+                                Color:
+                                    rgba: 0.906, 0.863, 0.812, 1
+                                Line:
+                                    rounded_rectangle: self.x, self.y, self.width, self.height, 16
+                                    width: 1
+                            Spinner:
+                                id: spinner_barrio
+                                text: 'Todos'
+                                values: root.barrios_disponibles
+                                background_color: 0, 0, 0, 0
+                                background_normal: ''
+                                color: 0.106, 0.082, 0.071, 1
+                                font_size: 11
+                                on_text: root.filtrar_barrio(self.text)
 
                     BoxLayout:
                         size_hint_y: None
@@ -568,34 +1306,37 @@
                         spacing: 2
                         canvas.before:
                             Color:
-                                rgba: 0.15, 0.15, 0.3, 1
+                                rgba: 0.106, 0.082, 0.071, 1
                             Rectangle:
                                 pos: self.pos
                                 size: self.size
                         Label:
                             text: 'Cuenta'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            size_hint_x: 0.18
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            size_hint_x: 0.15
+                            font_size: 11
                         Label:
                             text: 'Nombre'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            size_hint_x: 0.42
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            size_hint_x: 0.36
+                            font_size: 11
                         Label:
                             text: 'Barrio'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            size_hint_x: 0.22
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            size_hint_x: 0.20
+                            font_size: 11
                         Label:
                             text: 'Valor'
                             bold: True
-                            color: 0.2, 0.6, 1, 1
-                            size_hint_x: 0.18
-                            font_size: 12
+                            color: 0.906, 0.863, 0.812, 1
+                            size_hint_x: 0.15
+                            font_size: 11
+                        Label:
+                            text: ''
+                            size_hint_x: 0.14
 
                     ScrollView:
                         BoxLayout:
@@ -603,9 +1344,54 @@
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: 3
+                            spacing: 1
 
+                    # Paginación
+                    BoxLayout:
+                        size_hint_y: None
+                        height: 36
+                        spacing: 8
+                        padding: [4, 3]
+                        canvas.before:
+                            Color:
+                                rgba: 0.988, 0.969, 0.945, 1
+                            Rectangle:
+                                pos: self.pos
+                                size: self.size
+                        Button:
+                            text: '← Anterior'
+                            size_hint_x: None
+                            width: 96
+                            font_size: 11
+                            background_normal: ''
+                            background_color: 0.906, 0.863, 0.812, 1
+                            color: 0.106, 0.082, 0.071, 1
+                            on_press: root.pagina_anterior()
+                        Label:
+                            text: root.info_pendientes
+                            font_size: 11
+                            color: 0.549, 0.502, 0.467, 1
+                        Button:
+                            text: 'Siguiente →'
+                            size_hint_x: None
+                            width: 96
+                            font_size: 11
+                            background_normal: ''
+                            background_color: 0.914, 0.306, 0.173, 1
+                            color: 1, 1, 1, 1
+                            on_press: root.pagina_siguiente()
+
+# ============================================================
+#  TICKETS / PQR
+# ============================================================
 <TicketsScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
     BoxLayout:
         orientation: 'horizontal'
 
@@ -614,54 +1400,108 @@
 
         BoxLayout:
             orientation: 'vertical'
-            padding: 20
-            spacing: 10
+            padding: [24, 20]
+            spacing: 12
 
             Label:
                 text: 'PQR — Peticiones, Quejas y Recursos'
+                font_name: 'Sora'
                 font_size: 22
                 bold: True
-                color: 0.2, 0.6, 1, 1
+                color: 0.106, 0.082, 0.071, 1
                 size_hint_y: None
-                height: 40
+                height: 36
+                halign: 'left'
+                text_size: self.size
 
             BoxLayout:
                 size_hint_y: None
                 height: 42
                 spacing: 10
 
+                # ── + Nueva PQR ──
                 Button:
                     text: '+ Nueva PQR'
                     size_hint_x: 0.18
-                    background_color: 0.1, 0.7, 0.4, 1
+                    font_size: 12
+                    color: 1, 1, 1, 1
+                    background_color: 0, 0, 0, 0
+                    background_normal: ''
+                    background_down: ''
+                    canvas.before:
+                        Color:
+                            rgba: (0.090, 0.430, 0.170, 1) if self.state == 'down' else (0.122, 0.533, 0.220, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
                     on_press: root.nueva_pqr()
 
-                Spinner:
-                    id: filtro_estado
-                    text: 'Todos'
-                    values: ['Todos', 'Abierto', 'En Proceso', 'Resuelto']
+                # ── Filtro Estado ──
+                BoxLayout:
                     size_hint_x: 0.2
-                    on_text: root.cargar_lista()
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: filtro_estado
+                        text: 'Todos'
+                        values: ['Todos', 'Abierto', 'En Proceso', 'Resuelto']
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
+                        on_text: root.cargar_lista()
 
-                Spinner:
-                    id: filtro_tipo
-                    text: 'Todos'
-                    values: ['Todos', 'Petición', 'Queja', 'Recurso']
+                # ── Filtro Tipo ──
+                BoxLayout:
                     size_hint_x: 0.2
-                    on_text: root.cargar_lista()
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [21]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 1
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 21
+                            width: 1
+                    Spinner:
+                        id: filtro_tipo
+                        text: 'Todos'
+                        values: ['Todos', 'Petición', 'Queja', 'Recurso']
+                        background_color: 0, 0, 0, 0
+                        background_normal: ''
+                        color: 0.106, 0.082, 0.071, 1
+                        font_size: 12
+                        on_text: root.cargar_lista()
 
                 Label:
                     text: root.mensaje
-                    color: 0.6, 0.6, 0.6, 1
-                    font_size: 13
+                    color: 0.549, 0.502, 0.467, 1
+                    font_size: 11
+                    halign: 'left'
+                    text_size: self.size
 
+            # Encabezado tabla
             BoxLayout:
                 size_hint_y: None
-                height: 34
+                height: 32
                 spacing: 2
                 canvas.before:
                     Color:
-                        rgba: 0.15, 0.15, 0.3, 1
+                        rgba: 0.106, 0.082, 0.071, 1
                     Rectangle:
                         pos: self.pos
                         size: self.size
@@ -669,38 +1509,45 @@
                 Label:
                     text: '#'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.06
+                    font_size: 11
                 Label:
                     text: 'Suscriptor'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.25
+                    font_size: 11
                 Label:
                     text: 'Tipo'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.12
+                    font_size: 11
                 Label:
                     text: 'Asunto'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.26
+                    font_size: 11
                 Label:
                     text: 'Estado'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.13
+                    font_size: 11
                 Label:
                     text: 'Fecha'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.11
+                    font_size: 11
                 Label:
                     text: 'Ver'
                     bold: True
-                    color: 0.2, 0.6, 1, 1
+                    color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.07
+                    font_size: 11
 
             ScrollView:
                 BoxLayout:
@@ -708,4 +1555,4 @@
                     orientation: 'vertical'
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: 3
+                    spacing: 1
