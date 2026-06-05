@@ -1,11 +1,18 @@
+import csv
+import os
+from datetime import date
+
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.graphics import Color, Rectangle
 from kivy.properties import StringProperty, ListProperty
+from kivy.clock import Clock
+import threading
 
 from db.connection import get_connection
+import utils.overlay as overlay
 from theme import TINTA, STAGE, CARD, VERMILLON, LINE, MUTED, TEXT_SEC
 
 MESES = {
@@ -31,58 +38,50 @@ class FacturacionScreen(Screen):
     _cargando         = False  # guard para no disparar callbacks durante reset
 
     def on_enter(self):
-        self._cargar_periodos()
+        overlay.show()
+        threading.Thread(target=self._tarea_inicio, daemon=True).start()
 
     # ------------------------------------------------------------------
-    # Carga inicial de períodos disponibles y auto-selección del reciente
+    # Carga inicial: períodos + datos del período más reciente (en hilo)
     # ------------------------------------------------------------------
-    def _cargar_periodos(self):
+    def _tarea_inicio(self):
+        d = {'años': [], 'meses': [], 'año': None, 'mes': None,
+             'fac': 0.0, 'rec': 0.0, 'estratos': [], 'pendientes': [], 'error': None}
         conn = get_connection()
         if not conn:
+            d['error'] = 'Sin conexión'
+            Clock.schedule_once(lambda *_: self._aplicar_datos(d), 0)
             return
         cursor = conn.cursor()
         try:
             cursor.execute(
                 "SELECT DISTINCT año FROM facturas WHERE año IS NOT NULL ORDER BY año DESC"
             )
-            años = [str(r[0]) for r in cursor.fetchall()]
-            sp_año = self.ids.spinner_año
-            if años:
-                sp_año.values = años
-                if sp_año.text not in años:
-                    sp_año.text = años[0]
-
+            d['años'] = [str(r[0]) for r in cursor.fetchall()]
             cursor.execute("""
                 SELECT DISTINCT mes FROM facturas
                 WHERE mes IS NOT NULL ORDER BY CAST(mes AS UNSIGNED)
             """)
-            meses_db = [str(r[0]) for r in cursor.fetchall()]
-            sp_mes = self.ids.spinner_mes
-            if meses_db:
-                sp_mes.values = meses_db
-                if sp_mes.text not in meses_db:
-                    sp_mes.text = meses_db[-1]
-
+            d['meses'] = [str(r[0]) for r in cursor.fetchall()]
             cursor.execute("""
                 SELECT año, mes FROM facturas
                 WHERE año IS NOT NULL AND mes IS NOT NULL
-                ORDER BY año DESC, CAST(mes AS UNSIGNED) DESC
-                LIMIT 1
+                ORDER BY año DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1
             """)
             row = cursor.fetchone()
             if row:
-                sp_año.text = str(row[0])
-                sp_mes.text = str(row[1])
-                self.consultar()
-
+                año, mes = str(row[0]), str(row[1])
+                d['año'], d['mes'] = año, mes
+                self._consultar_periodo(cursor, año, mes, d)
         except Exception as e:
-            self.mensaje = f'Error: {e}'
+            d['error'] = str(e)
         finally:
             cursor.close()
             conn.close()
+        Clock.schedule_once(lambda *_: self._aplicar_datos(d), 0)
 
     # ------------------------------------------------------------------
-    # Consulta principal del período
+    # Consulta al presionar el botón (en hilo)
     # ------------------------------------------------------------------
     def consultar(self):
         año = self.ids.spinner_año.text
@@ -90,74 +89,94 @@ class FacturacionScreen(Screen):
         if año in ('Año', '') or mes in ('Mes', ''):
             self.mensaje = 'Selecciona un período válido'
             return
-        self._cargar_periodo(año, mes)
+        overlay.show('Cargando período…')
+        threading.Thread(
+            target=lambda: self._tarea_periodo(año, mes), daemon=True
+        ).start()
 
-    def _cargar_periodo(self, año, mes):
+    def _tarea_periodo(self, año, mes):
+        d = {'años': None, 'meses': None, 'año': año, 'mes': mes,
+             'fac': 0.0, 'rec': 0.0, 'estratos': [], 'pendientes': [], 'error': None}
         conn = get_connection()
         if not conn:
+            d['error'] = 'Sin conexión'
+            Clock.schedule_once(lambda *_: self._aplicar_datos(d), 0)
             return
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE año=%s AND mes=%s",
-                (año, mes)
-            )
-            total_fac = float(cursor.fetchone()[0])
-
-            cursor.execute(
-                "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE año=%s AND mes=%s",
-                (año, mes)
-            )
-            total_rec = float(cursor.fetchone()[0])
-
-            self.total_facturado = f'${total_fac:,.0f}'
-            self.total_recaudado = f'${total_rec:,.0f}'
-            self.deuda_periodo   = f'${max(0, total_fac - total_rec):,.0f}'
-
-            cursor.execute("""
-                SELECT estrato_contrato, COUNT(*), SUM(valor_recibo)
-                FROM facturas WHERE año=%s AND mes=%s
-                GROUP BY estrato_contrato ORDER BY estrato_contrato
-            """, (año, mes))
-            estratos = cursor.fetchall()
-
-            # Sin LIMIT — cargamos todos los pendientes
-            cursor.execute("""
-                SELECT s.cuenta, s.nombre, s.barrio, f.valor_recibo
-                FROM facturas f
-                JOIN suscriptores s ON f.cuenta_contrato = s.cuenta
-                WHERE f.año=%s AND f.mes=%s
-                  AND f.cuenta_contrato NOT IN (
-                      SELECT cuenta_contrato FROM recaudos WHERE año=%s AND mes=%s
-                  )
-                ORDER BY f.valor_recibo DESC
-            """, (año, mes, año, mes))
-            pendientes = cursor.fetchall()
-
-            nombre_mes = MESES.get(mes, mes)
-            self.mensaje = f'{nombre_mes} {año} — {len(pendientes)} pendientes de pago'
-
-            # Actualizar barrios disponibles
-            barrios = sorted({r[2] or '—' for r in pendientes})
-            self.barrios_disponibles = ['Todos'] + barrios
-
-            # Guardar cache y resetear estado de filtros sin disparar callbacks
-            self._pendientes_cache = pendientes
-            self._pagina_actual = 0
-
-            self._cargando = True
-            self.ids.buscador_pendiente.text = ''
-            self.ids.spinner_barrio.text = 'Todos'
-            self._cargando = False
-
-            self._actualizar_tablas(estratos)
-            self._aplicar_filtros()
-
+            self._consultar_periodo(cursor, año, mes, d)
         except Exception as e:
-            self.mensaje = f'Error: {e}'
+            d['error'] = str(e)
         finally:
             cursor.close()
             conn.close()
+        Clock.schedule_once(lambda *_: self._aplicar_datos(d), 0)
+
+    def _consultar_periodo(self, cursor, año, mes, d):
+        cursor.execute(
+            "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE año=%s AND mes=%s",
+            (año, mes)
+        )
+        d['fac'] = float(cursor.fetchone()[0])
+        cursor.execute(
+            "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE año=%s AND mes=%s",
+            (año, mes)
+        )
+        d['rec'] = float(cursor.fetchone()[0])
+        cursor.execute("""
+            SELECT estrato_contrato, COUNT(*), SUM(valor_recibo)
+            FROM facturas WHERE año=%s AND mes=%s
+            GROUP BY estrato_contrato ORDER BY estrato_contrato
+        """, (año, mes))
+        d['estratos'] = cursor.fetchall()
+        cursor.execute("""
+            SELECT s.cuenta, s.nombre, s.barrio, f.valor_recibo
+            FROM facturas f
+            JOIN suscriptores s ON f.cuenta_contrato = s.cuenta
+            WHERE f.año=%s AND f.mes=%s
+              AND f.cuenta_contrato NOT IN (
+                  SELECT cuenta_contrato FROM recaudos WHERE año=%s AND mes=%s
+              )
+            ORDER BY f.valor_recibo DESC
+        """, (año, mes, año, mes))
+        d['pendientes'] = cursor.fetchall()
+
+    def _aplicar_datos(self, d):
+        overlay.hide()
+        if d['error']:
+            if 'conexión' in d['error'].lower() or d['error'] == 'Sin conexión':
+                from kivy.app import App
+                App.get_running_app().ir_sin_conexion(self.name)
+            else:
+                self.mensaje = f'Error: {d["error"]}'
+            return
+        # Actualizar spinners solo si vienen del inicio
+        if d['años'] is not None:
+            sp_año = self.ids.spinner_año
+            sp_año.values = d['años']
+            sp_año.text = d['año'] or (d['años'][0] if d['años'] else '')
+        if d['meses'] is not None:
+            sp_mes = self.ids.spinner_mes
+            sp_mes.values = d['meses']
+            sp_mes.text = d['mes'] or (d['meses'][-1] if d['meses'] else '')
+        if not d['año']:
+            return
+        año, mes = d['año'], d['mes']
+        self.total_facturado = f'${d["fac"]:,.0f}'
+        self.total_recaudado = f'${d["rec"]:,.0f}'
+        self.deuda_periodo   = f'${max(0, d["fac"] - d["rec"]):,.0f}'
+        pendientes = d['pendientes']
+        self.mensaje = f'{MESES.get(mes, mes)} {año} — {len(pendientes)} pendientes de pago'
+        barrios = sorted({r[2] or '—' for r in pendientes})
+        self.barrios_disponibles = ['Todos'] + barrios
+        self._pendientes_cache = pendientes
+        self._pagina_actual = 0
+        self._cargando = True
+        self.ids.buscador_pendiente.text = ''
+        self.ids.spinner_barrio.text = 'Todos'
+        self._cargando = False
+        self._actualizar_tablas(d['estratos'])
+        self._aplicar_filtros()
 
     # ------------------------------------------------------------------
     # Filtros: barrio y búsqueda (ambos se combinan)
@@ -273,3 +292,28 @@ class FacturacionScreen(Screen):
     def _ver_suscriptor(self, cuenta):
         sus = self.manager.get_screen('suscriptores')
         sus._ver_detalle(cuenta)
+
+    # ------------------------------------------------------------------
+    # Exportar pendientes visibles a CSV
+    # ------------------------------------------------------------------
+    def exportar_csv(self):
+        datos = self._pendientes_vis
+        if not datos:
+            self.mensaje = 'No hay pendientes para exportar'
+            return
+
+        año = self.ids.spinner_año.text
+        mes = self.ids.spinner_mes.text
+        nombre_archivo = f'pendientes_{año}_{mes.zfill(2)}_{date.today()}.csv'
+        ruta = os.path.join(os.path.expanduser('~'), 'Documents', nombre_archivo)
+
+        try:
+            with open(ruta, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Cuenta', 'Nombre', 'Barrio', 'Valor pendiente'])
+                for cuenta, nombre, barrio, valor in datos:
+                    writer.writerow([cuenta, nombre or '', barrio or '', f'{float(valor):.2f}'])
+            self.mensaje = f'CSV guardado: {nombre_archivo}'
+            os.startfile(ruta)
+        except Exception as e:
+            self.mensaje = f'Error al exportar: {e}'

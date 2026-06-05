@@ -1,12 +1,16 @@
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, NoTransition
 from kivy.core.text import LabelBase
+from kivy.properties import StringProperty
 from screens.login import LoginScreen
 from screens.dashboard import DashboardScreen
 from screens.importar import ImportarScreen
 from screens.suscriptores import SuscriptoresScreen
 from screens.facturacion import FacturacionScreen
 from screens.tickets import TicketsScreen
+from screens.sin_conexion import SinConexionScreen
+from screens.usuarios import UsuariosScreen
+from screens.estadisticas import EstadisticasScreen
 from screens.menu import MenuLateral  # noqa: F401  (registra el widget para el kv)
 
 LabelBase.register(
@@ -24,6 +28,7 @@ LabelBase.register(
 
 class RecivaApp(App):
     current_user = None
+    user_rol = StringProperty('operador')
 
     def build(self):
         sm = ScreenManager(transition=NoTransition())
@@ -34,7 +39,15 @@ class RecivaApp(App):
         sm.add_widget(SuscriptoresScreen(name='suscriptores'))
         sm.add_widget(FacturacionScreen(name='facturacion'))
         sm.add_widget(TicketsScreen(name='tickets'))
+        sm.add_widget(SinConexionScreen(name='sin_conexion'))
+        sm.add_widget(UsuariosScreen(name='usuarios'))
+        sm.add_widget(EstadisticasScreen(name='estadisticas'))
         return sm
+
+    def ir_sin_conexion(self, origen):
+        sc = self.root.get_screen('sin_conexion')
+        sc.origen = origen
+        self.root.current = 'sin_conexion'
 
 
 if __name__ == '__main__':

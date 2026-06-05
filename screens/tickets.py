@@ -13,7 +13,10 @@ from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.properties import StringProperty
 from kivy.uix.widget import Widget
 
+from kivy.clock import Clock
+import threading
 from db.connection import get_connection
+import utils.overlay as overlay
 from theme import (TINTA, BG, STAGE, CARD, VERMILLON, LADRILLO,
                    LINE, MUTED, TEXT_SEC, SUCCESS, WARNING, DANGER)
 
@@ -36,46 +39,59 @@ class TicketsScreen(Screen):
     mensaje = StringProperty('')
 
     def on_enter(self):
-        self.cargar_lista()
+        self.ids.lista_pqr.clear_widgets()
+        overlay.show()
+        threading.Thread(target=self._tarea_lista, daemon=True).start()
 
     def cargar_lista(self):
-        lista = self.ids.lista_pqr
-        lista.clear_widgets()
-
         estado = self.ids.filtro_estado.text
         tipo   = self.ids.filtro_tipo.text
+        self.ids.lista_pqr.clear_widgets()
+        overlay.show()
+        threading.Thread(
+            target=lambda: self._tarea_lista(estado, tipo), daemon=True
+        ).start()
 
+    def _tarea_lista(self, estado='Todos', tipo='Todos'):
+        rows, error = [], None
         conn = get_connection()
         if not conn:
-            self.mensaje = 'Error de conexión'
+            Clock.schedule_once(lambda *_: self._aplicar_lista([], 'Error de conexión'), 0)
             return
-
         cursor = conn.cursor()
         try:
             where, params = [], []
             if estado != 'Todos':
-                where.append("estado=%s");  params.append(estado)
+                where.append("estado=%s"); params.append(estado)
             if tipo != 'Todos':
-                where.append("tipo=%s");    params.append(tipo)
-
+                where.append("tipo=%s");   params.append(tipo)
             sql = ("SELECT id, nombre_suscriptor, tipo, asunto, estado, "
                    "DATE(fecha_creacion) FROM pqr")
             if where:
                 sql += " WHERE " + " AND ".join(where)
             sql += " ORDER BY fecha_creacion DESC LIMIT 200"
-
             cursor.execute(sql, params)
             rows = cursor.fetchall()
-            self.mensaje = f'{len(rows)} PQR encontradas'
-
-            for i, row in enumerate(rows):
-                lista.add_widget(self._fila(*row, idx=i))
-
         except Exception as e:
-            self.mensaje = f'Error: {e}'
+            error = str(e)
         finally:
             cursor.close()
             conn.close()
+        Clock.schedule_once(lambda *_: self._aplicar_lista(rows, error), 0)
+
+    def _aplicar_lista(self, rows, error):
+        overlay.hide()
+        if error:
+            if 'conexión' in error.lower() or error == 'Error de conexión':
+                from kivy.app import App
+                App.get_running_app().ir_sin_conexion(self.name)
+            else:
+                self.mensaje = f'Error: {error}'
+            return
+        lista = self.ids.lista_pqr
+        self.mensaje = f'{len(rows)} PQR encontradas'
+        for i, row in enumerate(rows):
+            lista.add_widget(self._fila(*row, idx=i))
 
     def _fila(self, pqr_id, nombre, tipo, asunto, estado, fecha, idx=0):
         fila = BoxLayout(orientation='horizontal', size_hint_y=None, height=38, spacing=2)
@@ -364,101 +380,223 @@ class TicketsScreen(Screen):
     #  Popup: Ver / Actualizar PQR
     # ------------------------------------------------------------------
     def _ver_pqr(self, pqr_id):
-        conn = get_connection()
-        if not conn:
-            return
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                SELECT id, cuenta_contrato, nombre_suscriptor, tipo, asunto,
-                       descripcion, estado, observaciones,
-                       fecha_creacion, fecha_resolucion
-                FROM pqr WHERE id=%s
-            """, (pqr_id,))
-            pqr = cursor.fetchone()
-        finally:
-            cursor.close()
-            conn.close()
+        overlay.show('Cargando PQR…')
 
-        if not pqr:
-            return
-
-        pid, cuenta, nombre, tipo, asunto, desc, estado, obs, fecha_c, fecha_r = pqr
-
-        content = BoxLayout(orientation='vertical', spacing=8, padding=15)
-
-        info = GridLayout(cols=2, size_hint_y=None, height=145, spacing=6)
-        for lbl_t, val in [
-            ('PQR #:',      str(pid)),
-            ('Suscriptor:', f'{cuenta} — {nombre}' if cuenta else nombre or '—'),
-            ('Tipo:',       tipo),
-            ('Estado:',     estado),
-            ('Creada:',     str(fecha_c)[:16] if fecha_c else '—'),
-            ('Resuelto:',   str(fecha_r)[:16] if fecha_r else '—'),
-        ]:
-            info.add_widget(Label(text=lbl_t, bold=True, color=(0.5, 0.75, 1, 1),
-                                  font_size=13, halign='right'))
-            info.add_widget(Label(text=val, color=(1, 1, 1, 1),
-                                  font_size=13, halign='left'))
-        content.add_widget(info)
-
-        for titulo, valor in [('Asunto:', asunto), ('Descripción:', desc)]:
-            if valor:
-                content.add_widget(Label(text=titulo, bold=True, color=(0.5, 0.75, 1, 1),
-                                         size_hint_y=None, height=24))
-                content.add_widget(Label(text=valor, color=(0.85, 0.85, 0.85, 1),
-                                         size_hint_y=None, height=40,
-                                         text_size=(None, None), halign='left'))
-
-        content.add_widget(Label(text='Actualizar:', bold=True, color=(0.5, 0.75, 1, 1),
-                                 size_hint_y=None, height=26))
-
-        update_box = BoxLayout(size_hint_y=None, height=42, spacing=10)
-        sp_estado = Spinner(text=estado, values=ESTADOS, size_hint_x=0.4)
-        inp_obs   = TextInput(hint_text='Observaciones...', multiline=False,
-                              text=obs or '', size_hint_x=0.6)
-        update_box.add_widget(sp_estado)
-        update_box.add_widget(inp_obs)
-        content.add_widget(update_box)
-
-        lbl_err = Label(text='', color=(1, 0.3, 0.3, 1), size_hint_y=None, height=24)
-        content.add_widget(lbl_err)
-
-        btns = BoxLayout(size_hint_y=None, height=42, spacing=10)
-        btn_act    = Button(text='Actualizar',  background_color=(0.1, 0.7, 0.4, 1))
-        btn_cerrar = Button(text='Cerrar', background_color=(0.35, 0.35, 0.35, 1))
-        btns.add_widget(btn_act)
-        btns.add_widget(btn_cerrar)
-        content.add_widget(btns)
-
-        popup = Popup(title=f'PQR #{pid} — {tipo}', content=content, size_hint=(0.62, 0.82))
-
-        def actualizar(_):
-            conn2 = get_connection()
-            if not conn2:
-                lbl_err.text = 'Error de conexión'
+        def _tarea():
+            pqr, error = None, None
+            conn = get_connection()
+            if not conn:
+                Clock.schedule_once(
+                    lambda *_: (overlay.hide(),
+                                setattr(self, 'mensaje', 'Error de conexión')), 0)
                 return
-            cur2 = conn2.cursor()
+            cursor = conn.cursor()
             try:
-                nuevo_estado = sp_estado.text
-                nueva_fecha_r = (datetime.now()
-                                 if nuevo_estado == 'Resuelto' and estado != 'Resuelto'
-                                 else fecha_r)
-                cur2.execute("""
-                    UPDATE pqr
-                    SET estado=%s, observaciones=%s, fecha_resolucion=%s
-                    WHERE id=%s
-                """, (nuevo_estado, inp_obs.text.strip() or None, nueva_fecha_r, pid))
-                conn2.commit()
-                popup.dismiss()
-                self.cargar_lista()
-                self.mensaje = f'PQR #{pid} actualizada'
+                cursor.execute("""
+                    SELECT id, cuenta_contrato, nombre_suscriptor, tipo, asunto,
+                           descripcion, estado, observaciones,
+                           fecha_creacion, fecha_resolucion
+                    FROM pqr WHERE id=%s
+                """, (pqr_id,))
+                pqr = cursor.fetchone()
             except Exception as e:
-                lbl_err.text = f'Error: {e}'
+                error = str(e)
             finally:
-                cur2.close()
-                conn2.close()
+                cursor.close()
+                conn.close()
+            Clock.schedule_once(lambda *_: _abrir(pqr, error), 0)
 
-        btn_act.bind(on_press=actualizar)
-        btn_cerrar.bind(on_press=popup.dismiss)
-        popup.open()
+        def _abrir(pqr, error):
+            overlay.hide()
+            if error or not pqr:
+                self.mensaje = f'Error: {error or "PQR no encontrada"}'
+                return
+
+            pid, cuenta, nombre, tipo, asunto, desc, estado, obs, fecha_c, fecha_r = pqr
+
+            col_e = COLOR_ESTADO.get(estado, MUTED)
+            col_t = COLOR_TIPO.get(tipo, MUTED)
+
+            def _pill(text, bg, fg=(1, 1, 1, 1), w=120):
+                b = Button(text=text, size_hint_x=None, width=w, font_size=12,
+                           color=fg, background_color=(0, 0, 0, 0),
+                           background_normal='', background_down='')
+                with b.canvas.before:
+                    Color(*bg)
+                    rr = RoundedRectangle(pos=b.pos, size=b.size, radius=[20])
+                b.bind(pos=lambda _, v, r=rr: setattr(r, 'pos', v),
+                       size=lambda _, v, r=rr: setattr(r, 'size', v))
+                return b
+
+            # ── Root ──
+            content = BoxLayout(orientation='vertical', spacing=0)
+            with content.canvas.before:
+                Color(*CARD)
+                _bg = Rectangle(pos=content.pos, size=content.size)
+            content.bind(pos=lambda _, v: setattr(_bg, 'pos', v),
+                         size=lambda _, v: setattr(_bg, 'size', v))
+
+            # ── Franja TINTA ──
+            top = BoxLayout(orientation='vertical', size_hint_y=None, height=76,
+                            padding=[18, 8])
+            with top.canvas.before:
+                Color(*TINTA)
+                _top = Rectangle(pos=top.pos, size=top.size)
+            top.bind(pos=lambda _, v: setattr(_top, 'pos', v),
+                     size=lambda _, v: setattr(_top, 'size', v))
+
+            # Fila título + chip de estado
+            title_row = BoxLayout(size_hint_y=None, height=36)
+            title_row.add_widget(Label(
+                text=f'PQR #{pid}', bold=True, font_size=17,
+                color=(1, 1, 1, 1), halign='left', valign='middle',
+                size_hint_x=0.45,
+            ))
+            chip_wrap = BoxLayout(size_hint_x=0.55, spacing=6, padding=[0, 4, 0, 4])
+            for chip_txt, chip_col in [(tipo, col_t), (estado, col_e)]:
+                chip = BoxLayout(size_hint_x=None, width=110)
+                with chip.canvas.before:
+                    Color(*chip_col)
+                    _ch = RoundedRectangle(pos=chip.pos, size=chip.size, radius=[13])
+                chip.bind(pos=lambda _, v, r=_ch: setattr(r, 'pos', v),
+                          size=lambda _, v, r=_ch: setattr(r, 'size', v))
+                chip.add_widget(Label(text=chip_txt, color=(1, 1, 1, 1),
+                                      bold=True, font_size=11))
+                chip_wrap.add_widget(chip)
+            title_row.add_widget(chip_wrap)
+            top.add_widget(title_row)
+
+            sus_txt = f'#{cuenta} — {nombre}' if cuenta else nombre or '—'
+            top.add_widget(Label(
+                text=sus_txt, font_size=11, color=LINE,
+                halign='left', valign='middle', size_hint_y=None, height=26,
+            ))
+            content.add_widget(top)
+
+            # ── Metadatos ──
+            meta = BoxLayout(size_hint_y=None, height=38, spacing=1)
+            with meta.canvas.before:
+                Color(*STAGE)
+                _m = Rectangle(pos=meta.pos, size=meta.size)
+            meta.bind(pos=lambda _, v: setattr(_m, 'pos', v),
+                      size=lambda _, v: setattr(_m, 'size', v))
+            fecha_c_txt = str(fecha_c)[:16] if fecha_c else '—'
+            fecha_r_txt = str(fecha_r)[:16] if fecha_r else 'Pendiente'
+            for txt, lbl_t in [(fecha_c_txt, 'Creada'), (fecha_r_txt, 'Resuelta')]:
+                col = BoxLayout(orientation='vertical', padding=[14, 4])
+                col.add_widget(Label(text=txt, font_size=12, bold=True, color=TINTA,
+                                     halign='left', valign='middle'))
+                col.add_widget(Label(text=lbl_t, font_size=9, color=MUTED,
+                                     halign='left', valign='middle'))
+                meta.add_widget(col)
+            content.add_widget(meta)
+
+            # ── Cuerpo: asunto + descripción ──
+            body = BoxLayout(orientation='vertical', padding=[18, 10], spacing=8)
+            content.add_widget(body)
+
+            for etq, val in [('Asunto', asunto), ('Descripción', desc)]:
+                if val:
+                    body.add_widget(Label(
+                        text=etq, bold=True, font_size=11, color=VERMILLON,
+                        size_hint_y=None, height=18,
+                        halign='left', valign='middle',
+                    ))
+                    lbl_val = Label(
+                        text=val, font_size=13, color=TINTA,
+                        size_hint_y=None, halign='left', valign='top',
+                    )
+                    lbl_val.bind(
+                        width=lambda inst, w: setattr(inst, 'text_size', (w - 4, None)),
+                        texture_size=lambda inst, ts: setattr(inst, 'height', ts[1] + 6),
+                    )
+                    body.add_widget(lbl_val)
+
+            # ── Actualizar ──
+            body.add_widget(Label(
+                text='Actualizar estado', bold=True, font_size=11, color=VERMILLON,
+                size_hint_y=None, height=22,
+                halign='left', valign='middle',
+            ))
+            upd = BoxLayout(size_hint_y=None, height=42, spacing=10)
+            sp_wrap = BoxLayout(size_hint_x=0.38)
+            with sp_wrap.canvas.before:
+                Color(*STAGE)
+                _sw = Rectangle(pos=sp_wrap.pos, size=sp_wrap.size)
+            sp_wrap.bind(pos=lambda _, v, r=_sw: setattr(r, 'pos', v),
+                         size=lambda _, v, r=_sw: setattr(r, 'size', v))
+            sp_estado = Spinner(text=estado, values=ESTADOS,
+                                background_color=(0, 0, 0, 0), background_normal='',
+                                color=TINTA, font_size=13)
+            sp_wrap.add_widget(sp_estado)
+            upd.add_widget(sp_wrap)
+
+            obs_wrap = BoxLayout(size_hint_x=0.62)
+            with obs_wrap.canvas.before:
+                Color(*STAGE)
+                _ow = Rectangle(pos=obs_wrap.pos, size=obs_wrap.size)
+            obs_wrap.bind(pos=lambda _, v, r=_ow: setattr(r, 'pos', v),
+                          size=lambda _, v, r=_ow: setattr(r, 'size', v))
+            inp_obs = TextInput(
+                hint_text='Observaciones...', multiline=False,
+                text=obs or '',
+                background_color=(0, 0, 0, 0), background_normal='', background_active='',
+                foreground_color=TINTA, cursor_color=VERMILLON,
+                hint_text_color=MUTED, padding=[8, 10], font_size=13,
+            )
+            obs_wrap.add_widget(inp_obs)
+            upd.add_widget(obs_wrap)
+            body.add_widget(upd)
+
+            lbl_err = Label(text='', color=DANGER, font_size=11,
+                            size_hint_y=None, height=22)
+            body.add_widget(lbl_err)
+
+            # ── Footer ──
+            footer = BoxLayout(size_hint_y=None, height=52, spacing=10, padding=[14, 8])
+            with footer.canvas.before:
+                Color(*STAGE)
+                _ft = Rectangle(pos=footer.pos, size=footer.size)
+            footer.bind(pos=lambda _, v: setattr(_ft, 'pos', v),
+                        size=lambda _, v: setattr(_ft, 'size', v))
+            footer.add_widget(Widget())
+            btn_act    = _pill('Guardar cambios', SUCCESS, w=140)
+            btn_cerrar = _pill('Cerrar', LINE, fg=TINTA)
+            footer.add_widget(btn_act)
+            footer.add_widget(btn_cerrar)
+            content.add_widget(footer)
+
+            popup = Popup(title='', content=content, size_hint=(0.62, 0.86),
+                          background_color=CARD, separator_height=0)
+
+            def actualizar(_):
+                conn2 = get_connection()
+                if not conn2:
+                    lbl_err.text = 'Error de conexión'
+                    return
+                cur2 = conn2.cursor()
+                try:
+                    nuevo_estado = sp_estado.text
+                    nueva_fecha_r = (datetime.now()
+                                     if nuevo_estado == 'Resuelto' and estado != 'Resuelto'
+                                     else fecha_r)
+                    cur2.execute("""
+                        UPDATE pqr
+                        SET estado=%s, observaciones=%s, fecha_resolucion=%s
+                        WHERE id=%s
+                    """, (nuevo_estado, inp_obs.text.strip() or None, nueva_fecha_r, pid))
+                    conn2.commit()
+                    popup.dismiss()
+                    self.cargar_lista()
+                    self.mensaje = f'PQR #{pid} actualizada'
+                except Exception as e:
+                    lbl_err.text = f'Error: {e}'
+                finally:
+                    cur2.close()
+                    conn2.close()
+
+            btn_act.bind(on_press=actualizar)
+            btn_cerrar.bind(on_press=popup.dismiss)
+            popup.open()
+
+        threading.Thread(target=_tarea, daemon=True).start()
