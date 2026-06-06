@@ -126,7 +126,8 @@ class SuscriptoresScreen(Screen):
         overlay.show('Cargando suscriptor…')
 
         def _tarea():
-            info, facturas, recaudos, pqr_list, error = None, {}, {}, [], None
+            info, facturas, recaudos, recaudos_det, pqr_list, error = \
+                None, {}, {}, {}, [], None
             conn = get_connection()
             if not conn:
                 Clock.schedule_once(
@@ -147,12 +148,19 @@ class SuscriptoresScreen(Screen):
                     GROUP BY año, mes ORDER BY año, mes
                 """, (cuenta,))
                 facturas = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
+                # Recaudos individuales para el desglose por factura
                 cursor.execute("""
-                    SELECT año, mes, SUM(valor_recibo)
+                    SELECT año, mes, numero_factura, fecha_recaudo,
+                           valor_recibo, concepto
                     FROM recaudos WHERE cuenta_contrato = %s
-                    GROUP BY año, mes ORDER BY año, mes
+                    ORDER BY año, mes, fecha_recaudo
                 """, (cuenta,))
-                recaudos = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
+                for r in cursor.fetchall():
+                    key = (int(r[0]), int(r[1]))
+                    recaudos[key] = recaudos.get(key, 0) + float(r[4])
+                    recaudos_det.setdefault(key, []).append(
+                        (r[2], r[3], float(r[4]), str(r[5] or ''))
+                    )
                 cursor.execute("""
                     SELECT id, tipo, asunto, estado, fecha_creacion
                     FROM pqr WHERE cuenta_contrato = %s
@@ -165,18 +173,19 @@ class SuscriptoresScreen(Screen):
                 cursor.close()
                 conn.close()
             Clock.schedule_once(
-                lambda *_: _aplicar(info, facturas, recaudos, pqr_list, error), 0)
+                lambda *_: _aplicar(info, facturas, recaudos, recaudos_det,
+                                    pqr_list, error), 0)
 
-        def _aplicar(info, facturas, recaudos, pqr_list, error):
+        def _aplicar(info, facturas, recaudos, recaudos_det, pqr_list, error):
             overlay.hide()
             if error:
                 self.mensaje = f'Error al cargar detalle: {error}'
                 return
-            self._popup_detalle(info, facturas, recaudos, pqr_list)
+            self._popup_detalle(info, facturas, recaudos, recaudos_det, pqr_list)
 
         threading.Thread(target=_tarea, daemon=True).start()
 
-    def _popup_detalle(self, info, facturas, recaudos, pqr_list):
+    def _popup_detalle(self, info, facturas, recaudos, recaudos_det, pqr_list):
         if not info:
             return
 
@@ -276,23 +285,23 @@ class SuscriptoresScreen(Screen):
             _hdr = Rectangle(pos=hdr.pos, size=hdr.size)
         hdr.bind(pos=lambda _, v: setattr(_hdr, 'pos', v),
                  size=lambda _, v: setattr(_hdr, 'size', v))
-        for txt, sx in [('Año', 0.12), ('Mes', 0.18), ('Facturado', 0.23),
-                         ('Pagado', 0.23), ('Estado', 0.24)]:
+        for txt, sx in [('Año', 0.10), ('Mes', 0.15), ('Facturado', 0.20),
+                         ('Pagado', 0.20), ('Estado', 0.20), ('', 0.15)]:
             hdr.add_widget(Label(text=txt, bold=True, size_hint_x=sx,
                                  font_size=11, color=LINE))
         content.add_widget(hdr)
 
-        # ── Tabla scrollable ──
+        # ── Tabla scrollable con filas expandibles ──
         scroll = ScrollView()
-        tabla = GridLayout(cols=5, size_hint_y=None,
-                           row_default_height=30, row_force_default=True, spacing=1)
+        tabla  = BoxLayout(orientation='vertical', size_hint_y=None, spacing=1)
         tabla.bind(minimum_height=tabla.setter('height'))
 
         all_months = sorted(set(list(facturas.keys()) + list(recaudos.keys())))
         for i, (a, m) in enumerate(all_months):
-            fac_val = facturas.get((a, m), 0)
-            rec_val = recaudos.get((a, m), 0)
-            row_bg  = CARD if i % 2 == 0 else STAGE
+            fac_val  = facturas.get((a, m), 0)
+            rec_val  = recaudos.get((a, m), 0)
+            det_rows = recaudos_det.get((a, m), [])
+            row_bg   = CARD if i % 2 == 0 else STAGE
 
             if fac_val > 0 and rec_val >= fac_val * 0.95:
                 est_txt, est_col = 'Pagado', SUCCESS
@@ -301,20 +310,95 @@ class SuscriptoresScreen(Screen):
             else:
                 est_txt, est_col = 'Sin factura', MUTED
 
-            for val, col in [
-                (str(a),                   TINTA),
-                (MESES.get(m, str(m))[:5], TINTA),
-                (f'${fac_val:,.0f}',       TEXT_SEC),
-                (f'${rec_val:,.0f}',       SUCCESS if rec_val > 0 else MUTED),
-                (est_txt,                  est_col),
+            # Contenedor del grupo (fila principal + sub-panel)
+            grupo = BoxLayout(orientation='vertical', size_hint_y=None,
+                              height=30)
+
+            # Fila principal
+            fila = BoxLayout(size_hint_y=None, height=30)
+            with fila.canvas.before:
+                Color(*row_bg)
+                _rf = Rectangle(pos=fila.pos, size=fila.size)
+            fila.bind(pos=lambda _, v, r=_rf: setattr(r, 'pos', v),
+                      size=lambda _, v, r=_rf: setattr(r, 'size', v))
+
+            for val, sx, col in [
+                (str(a),                   0.10, TINTA),
+                (MESES.get(m, str(m))[:5], 0.15, TINTA),
+                (f'${fac_val:,.0f}',       0.20, TEXT_SEC),
+                (f'${rec_val:,.0f}',       0.20, SUCCESS if rec_val > 0 else MUTED),
+                (est_txt,                  0.20, est_col),
             ]:
-                lbl = Label(text=val, color=col, font_size=12)
-                with lbl.canvas.before:
-                    Color(*row_bg)
-                    _r = Rectangle(pos=lbl.pos, size=lbl.size)
-                lbl.bind(pos=lambda inst, v, r=_r: setattr(r, 'pos', v),
-                         size=lambda inst, v, r=_r: setattr(r, 'size', v))
-                tabla.add_widget(lbl)
+                lbl = Label(text=val, color=col, font_size=12, size_hint_x=sx,
+                            halign='left', valign='middle')
+                lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-4, v[1])))
+                fila.add_widget(lbl)
+
+            # Sub-panel oculto con el desglose
+            sub_h = len(det_rows) * 24 + (22 if det_rows else 0)
+            sub = BoxLayout(orientation='vertical', size_hint_y=None, height=0)
+
+            if det_rows:
+                # Encabezado del desglose
+                sub_hdr = BoxLayout(size_hint_y=None, height=22)
+                with sub_hdr.canvas.before:
+                    Color(0.18, 0.14, 0.12, 1)
+                    _sh = Rectangle(pos=sub_hdr.pos, size=sub_hdr.size)
+                sub_hdr.bind(pos=lambda _, v, r=_sh: setattr(r, 'pos', v),
+                             size=lambda _, v, r=_sh: setattr(r, 'size', v))
+                for txt, sx in [('N° Factura', 0.28), ('Fecha pago', 0.24),
+                                 ('Concepto', 0.30), ('Valor', 0.18)]:
+                    sub_hdr.add_widget(Label(
+                        text=txt, font_size=9, bold=True, color=LINE,
+                        size_hint_x=sx, halign='left', valign='middle'
+                    ))
+                sub.add_widget(sub_hdr)
+
+                for nf, fecha_rec, val_rec, concepto in det_rows:
+                    sf = BoxLayout(size_hint_y=None, height=24)
+                    with sf.canvas.before:
+                        Color(0.96, 0.94, 0.92, 1)
+                        _sf = Rectangle(pos=sf.pos, size=sf.size)
+                    sf.bind(pos=lambda _, v, r=_sf: setattr(r, 'pos', v),
+                            size=lambda _, v, r=_sf: setattr(r, 'size', v))
+                    nf_str = str(nf) if nf else '—'
+                    fecha_str = str(fecha_rec)[:10] if fecha_rec else '—'
+                    conc_str  = (concepto[:22] + '…') if len(concepto) > 22 else concepto
+                    for txt, sx in [(nf_str, 0.28), (fecha_str, 0.24),
+                                    (conc_str, 0.30), (f'${val_rec:,.0f}', 0.18)]:
+                        lbl = Label(text=txt, font_size=10, color=TINTA,
+                                    size_hint_x=sx, halign='left', valign='middle')
+                        lbl.bind(size=lambda inst, v: setattr(inst, 'text_size',
+                                                               (v[0]-4, v[1])))
+                        sf.add_widget(lbl)
+                    sub.add_widget(sf)
+
+            # Botón expandir/colapsar
+            tiene_det = bool(det_rows)
+            btn_exp = Button(
+                text='▼' if tiene_det else '—',
+                size_hint_x=0.15, font_size=11,
+                background_normal='', background_color=(0, 0, 0, 0),
+                color=TINTA if tiene_det else MUTED,
+                disabled=not tiene_det,
+            )
+
+            def _toggle(_, sub=sub, grupo=grupo, sub_h=sub_h, btn=btn_exp):
+                if sub.height == 0:
+                    sub.height = sub_h
+                    grupo.height = 30 + sub_h
+                    btn.text = '▲'
+                else:
+                    sub.height = 0
+                    grupo.height = 30
+                    btn.text = '▼'
+
+            btn_exp.bind(on_press=_toggle)
+            fila.add_widget(btn_exp)
+
+            grupo.add_widget(fila)
+            grupo.add_widget(sub)
+            tabla.add_widget(grupo)
 
         scroll.add_widget(tabla)
         content.add_widget(scroll)
