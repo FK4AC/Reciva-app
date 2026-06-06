@@ -121,10 +121,12 @@ class FacturacionScreen(Screen):
             (año, mes)
         )
         d['fac'] = float(cursor.fetchone()[0])
-        cursor.execute(
-            "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE año=%s AND mes=%s",
-            (año, mes)
-        )
+        cursor.execute("""
+            SELECT COALESCE(SUM(r.valor_recibo), 0)
+            FROM recaudos r
+            INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+            WHERE f.año=%s AND f.mes=%s
+        """, (año, mes))
         d['rec'] = float(cursor.fetchone()[0])
         cursor.execute("""
             SELECT estrato_contrato, COUNT(*), SUM(valor_recibo)
@@ -142,8 +144,7 @@ class FacturacionScreen(Screen):
             WHERE f.año=%s AND f.mes=%s
               AND NOT EXISTS (
                   SELECT 1 FROM recaudos r
-                  WHERE r.cuenta_contrato = f.cuenta_contrato
-                    AND r.año = f.año AND r.mes = f.mes
+                  WHERE r.numero_factura = f.numero_factura
               )
             ORDER BY f.valor_recibo DESC
         """, (año, mes))

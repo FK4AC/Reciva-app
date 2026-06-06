@@ -117,13 +117,15 @@ class EstadisticasScreen(Screen):
                 (año, mes),
             )
             d['fac'] = float(cur.fetchone()[0])
-            cur.execute(
-                "SELECT COALESCE(SUM(valor_recibo),0) FROM recaudos WHERE año=%s AND mes=%s",
-                (año, mes),
-            )
+            cur.execute("""
+                SELECT COALESCE(SUM(r.valor_recibo), 0)
+                FROM recaudos r
+                INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                WHERE f.año=%s AND f.mes=%s
+            """, (año, mes))
             d['rec'] = float(cur.fetchone()[0])
 
-            # Por estrato — pre-agrega para evitar duplicados en doble JOIN
+            # Por estrato — recaudado via JOIN por numero_factura
             cur.execute("""
                 SELECT
                     COALESCE(s.estrato, 'Sin estrato')  AS grupo,
@@ -137,9 +139,11 @@ class EstadisticasScreen(Screen):
                     GROUP BY cuenta_contrato
                 ) fa ON fa.cuenta_contrato = s.cuenta
                 LEFT JOIN (
-                    SELECT cuenta_contrato, SUM(valor_recibo) AS total_rec
-                    FROM recaudos WHERE año = %s AND mes = %s
-                    GROUP BY cuenta_contrato
+                    SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE f.año = %s AND f.mes = %s
+                    GROUP BY f.cuenta_contrato
                 ) ra ON ra.cuenta_contrato = s.cuenta
                 GROUP BY s.estrato
                 ORDER BY CAST(s.estrato AS UNSIGNED)
@@ -160,9 +164,11 @@ class EstadisticasScreen(Screen):
                     GROUP BY cuenta_contrato
                 ) fa ON fa.cuenta_contrato = s.cuenta
                 LEFT JOIN (
-                    SELECT cuenta_contrato, SUM(valor_recibo) AS total_rec
-                    FROM recaudos WHERE año = %s AND mes = %s
-                    GROUP BY cuenta_contrato
+                    SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE f.año = %s AND f.mes = %s
+                    GROUP BY f.cuenta_contrato
                 ) ra ON ra.cuenta_contrato = s.cuenta
                 GROUP BY s.barrio
                 ORDER BY s.barrio

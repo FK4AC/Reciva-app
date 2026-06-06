@@ -148,12 +148,16 @@ class SuscriptoresScreen(Screen):
                     GROUP BY año, mes ORDER BY año, mes
                 """, (cuenta,))
                 facturas = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
-                # Recaudos individuales para el desglose por factura
+                # JOIN por numero_factura: el período viene de la factura,
+                # no del año/mes almacenado en recaudos (puede ser fallback incorrecto)
                 cursor.execute("""
-                    SELECT año, mes, numero_factura, fecha_recaudo,
-                           valor_recibo, concepto
-                    FROM recaudos WHERE cuenta_contrato = %s
-                    ORDER BY año, mes, fecha_recaudo
+                    SELECT f.año, f.mes,
+                           r.numero_factura, r.fecha_recaudo,
+                           r.valor_recibo, r.concepto
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE r.cuenta_contrato = %s
+                    ORDER BY f.año, f.mes, r.fecha_recaudo
                 """, (cuenta,))
                 for r in cursor.fetchall():
                     key = (int(r[0]), int(r[1]))
