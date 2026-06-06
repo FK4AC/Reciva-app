@@ -57,12 +57,13 @@ class FacturacionScreen(Screen):
             cursor.execute(
                 "SELECT DISTINCT año FROM facturas WHERE año IS NOT NULL ORDER BY año DESC"
             )
-            d['años'] = [str(r[0]) for r in cursor.fetchall()]
-            cursor.execute("""
-                SELECT DISTINCT mes FROM facturas
-                WHERE mes IS NOT NULL ORDER BY CAST(mes AS UNSIGNED)
-            """)
-            d['meses'] = [str(r[0]) for r in cursor.fetchall()]
+            anios_db = {str(r[0]) for r in cursor.fetchall()}
+            anios_db.update({'2025', '2026'})
+            d['años'] = sorted(anios_db, reverse=True)
+
+            # Siempre mostrar los 12 meses
+            d['meses'] = [str(i) for i in range(1, 13)]
+
             cursor.execute("""
                 SELECT año, mes FROM facturas
                 WHERE año IS NOT NULL AND mes IS NOT NULL
@@ -73,6 +74,8 @@ class FacturacionScreen(Screen):
                 año, mes = str(row[0]), str(row[1])
                 d['año'], d['mes'] = año, mes
                 self._consultar_periodo(cursor, año, mes, d)
+            else:
+                d['año'], d['mes'] = '2025', '1'
         except Exception as e:
             d['error'] = str(e)
         finally:
@@ -130,15 +133,20 @@ class FacturacionScreen(Screen):
         """, (año, mes))
         d['estratos'] = cursor.fetchall()
         cursor.execute("""
-            SELECT s.cuenta, s.nombre, s.barrio, f.valor_recibo
+            SELECT f.cuenta_contrato,
+                   COALESCE(s.nombre, f.cuenta_contrato) AS nombre,
+                   COALESCE(s.barrio, '—')               AS barrio,
+                   f.valor_recibo
             FROM facturas f
-            JOIN suscriptores s ON f.cuenta_contrato = s.cuenta
+            LEFT JOIN suscriptores s ON s.cuenta = f.cuenta_contrato
             WHERE f.año=%s AND f.mes=%s
-              AND f.cuenta_contrato NOT IN (
-                  SELECT cuenta_contrato FROM recaudos WHERE año=%s AND mes=%s
+              AND NOT EXISTS (
+                  SELECT 1 FROM recaudos r
+                  WHERE r.cuenta_contrato = f.cuenta_contrato
+                    AND r.año = f.año AND r.mes = f.mes
               )
             ORDER BY f.valor_recibo DESC
-        """, (año, mes, año, mes))
+        """, (año, mes))
         d['pendientes'] = cursor.fetchall()
 
     def _aplicar_datos(self, d):

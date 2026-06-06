@@ -45,13 +45,13 @@ class EstadisticasScreen(Screen):
             cur.execute(
                 "SELECT DISTINCT año FROM facturas WHERE año IS NOT NULL ORDER BY año DESC"
             )
-            d['anios'] = [str(r[0]) for r in cur.fetchall()]
-            cur.execute(
-                "SELECT DISTINCT mes FROM facturas WHERE mes IS NOT NULL "
-                "ORDER BY CAST(mes AS UNSIGNED)"
-            )
-            d['meses'] = [MESES_NOMBRE.get(str(r[0]), str(r[0]))
-                          for r in cur.fetchall()]
+            anios_db = {str(r[0]) for r in cur.fetchall()}
+            anios_db.update({'2025', '2026'})
+            d['anios'] = sorted(anios_db, reverse=True)
+
+            # Siempre mostrar los 12 meses
+            d['meses'] = list(MESES_NOMBRE.values())
+
             cur.execute(
                 "SELECT año, mes FROM facturas WHERE año IS NOT NULL AND mes IS NOT NULL "
                 "ORDER BY año DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1"
@@ -60,6 +60,9 @@ class EstadisticasScreen(Screen):
             if row:
                 d['año'] = str(row[0])
                 d['mes'] = MESES_NOMBRE.get(str(row[1]), str(row[1]))
+            else:
+                d['año'] = '2025'
+                d['mes'] = 'Enero'
         except Exception as e:
             print(f'Error estadísticas init: {e}')
         finally:
