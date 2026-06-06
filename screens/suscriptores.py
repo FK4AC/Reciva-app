@@ -285,16 +285,28 @@ class SuscriptoresScreen(Screen):
             _hdr = Rectangle(pos=hdr.pos, size=hdr.size)
         hdr.bind(pos=lambda _, v: setattr(_hdr, 'pos', v),
                  size=lambda _, v: setattr(_hdr, 'size', v))
-        for txt, sx in [('Año', 0.10), ('Mes', 0.15), ('Facturado', 0.20),
-                         ('Pagado', 0.20), ('Estado', 0.20), ('', 0.15)]:
-            hdr.add_widget(Label(text=txt, bold=True, size_hint_x=sx,
-                                 font_size=11, color=LINE))
+        for txt, sx, al in [
+            ('Año',       0.10, 'left'),
+            ('Mes',       0.18, 'left'),
+            ('Facturado', 0.22, 'right'),
+            ('Pagado',    0.22, 'right'),
+            ('Estado',    0.18, 'center'),
+            ('',          0.10, 'left'),
+        ]:
+            lbl_h = Label(text=txt, bold=True, size_hint_x=sx,
+                          font_size=10, color=LINE, halign=al, valign='middle')
+            lbl_h.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
+            hdr.add_widget(lbl_h)
         content.add_widget(hdr)
 
         # ── Tabla scrollable con filas expandibles ──
         scroll = ScrollView()
-        tabla  = BoxLayout(orientation='vertical', size_hint_y=None, spacing=1)
+        tabla  = BoxLayout(orientation='vertical', size_hint_y=None, spacing=0)
         tabla.bind(minimum_height=tabla.setter('height'))
+
+        ROW_H   = 36   # altura fila principal
+        SUB_HDR = 24   # encabezado sub-panel
+        SUB_ROW = 26   # fila de recaudo individual
 
         all_months = sorted(set(list(facturas.keys()) + list(recaudos.keys())))
         for i, (a, m) in enumerate(all_months):
@@ -310,94 +322,110 @@ class SuscriptoresScreen(Screen):
             else:
                 est_txt, est_col = 'Sin factura', MUTED
 
-            # Contenedor del grupo (fila principal + sub-panel)
+            tiene_det = bool(det_rows)
+            sub_h     = SUB_HDR + len(det_rows) * SUB_ROW if tiene_det else 0
+
+            # ── Grupo: fila principal + divisor + sub-panel ──
             grupo = BoxLayout(orientation='vertical', size_hint_y=None,
-                              height=30)
+                              height=ROW_H)
 
             # Fila principal
-            fila = BoxLayout(size_hint_y=None, height=30)
+            fila = BoxLayout(size_hint_y=None, height=ROW_H, padding=[0, 0, 0, 0])
             with fila.canvas.before:
                 Color(*row_bg)
                 _rf = Rectangle(pos=fila.pos, size=fila.size)
             fila.bind(pos=lambda _, v, r=_rf: setattr(r, 'pos', v),
                       size=lambda _, v, r=_rf: setattr(r, 'size', v))
 
-            for val, sx, col in [
-                (str(a),                   0.10, TINTA),
-                (MESES.get(m, str(m))[:5], 0.15, TINTA),
-                (f'${fac_val:,.0f}',       0.20, TEXT_SEC),
-                (f'${rec_val:,.0f}',       0.20, SUCCESS if rec_val > 0 else MUTED),
-                (est_txt,                  0.20, est_col),
+            for val, sx, col, al in [
+                (str(a),                    0.10, TEXT_SEC,                           'left'),
+                (MESES.get(m, str(m)),      0.18, TINTA,                              'left'),
+                (f'${fac_val:,.0f}',        0.22, TEXT_SEC,                           'right'),
+                (f'${rec_val:,.0f}',        0.22, SUCCESS if rec_val > 0 else MUTED,  'right'),
+                (est_txt,                   0.18, est_col,                             'center'),
             ]:
                 lbl = Label(text=val, color=col, font_size=12, size_hint_x=sx,
-                            halign='left', valign='middle')
-                lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-4, v[1])))
+                            halign=al, valign='middle')
+                lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
                 fila.add_widget(lbl)
 
-            # Sub-panel oculto con el desglose
-            sub_h = len(det_rows) * 24 + (22 if det_rows else 0)
-            sub = BoxLayout(orientation='vertical', size_hint_y=None, height=0)
+            # Botón expandir / colapsar (sólo si hay desglose)
+            btn_exp = Button(
+                text='▼' if tiene_det else '',
+                size_hint_x=0.10, font_size=10,
+                background_normal='', background_color=(0, 0, 0, 0),
+                color=MUTED, disabled=not tiene_det,
+            )
+            fila.add_widget(btn_exp)
+            grupo.add_widget(fila)
 
-            if det_rows:
-                # Encabezado del desglose
-                sub_hdr = BoxLayout(size_hint_y=None, height=22)
-                with sub_hdr.canvas.before:
-                    Color(0.18, 0.14, 0.12, 1)
-                    _sh = Rectangle(pos=sub_hdr.pos, size=sub_hdr.size)
-                sub_hdr.bind(pos=lambda _, v, r=_sh: setattr(r, 'pos', v),
-                             size=lambda _, v, r=_sh: setattr(r, 'size', v))
-                for txt, sx in [('N° Factura', 0.28), ('Fecha pago', 0.24),
-                                 ('Concepto', 0.30), ('Valor', 0.18)]:
-                    sub_hdr.add_widget(Label(
-                        text=txt, font_size=9, bold=True, color=LINE,
-                        size_hint_x=sx, halign='left', valign='middle'
+            # Sub-panel (construido siempre, oculto con height=0 + opacity=0)
+            sub = BoxLayout(orientation='vertical', size_hint_y=None,
+                            height=0, opacity=0)
+
+            if tiene_det:
+                # Encabezado del sub-panel
+                sh = BoxLayout(size_hint_y=None, height=SUB_HDR, padding=[32, 0, 8, 0])
+                with sh.canvas.before:
+                    Color(*STAGE)
+                    _sh = Rectangle(pos=sh.pos, size=sh.size)
+                sh.bind(pos=lambda _, v, r=_sh: setattr(r, 'pos', v),
+                        size=lambda _, v, r=_sh: setattr(r, 'size', v))
+                for txt, sx in [('N° Factura', 0.28), ('Fecha pago', 0.22),
+                                 ('Concepto',   0.32), ('Valor',      0.18)]:
+                    sh.add_widget(Label(
+                        text=txt, font_size=9, bold=True, color=MUTED,
+                        size_hint_x=sx, halign='left', valign='middle',
                     ))
-                sub.add_widget(sub_hdr)
+                sub.add_widget(sh)
 
-                for nf, fecha_rec, val_rec, concepto in det_rows:
-                    sf = BoxLayout(size_hint_y=None, height=24)
+                for j, (nf, fecha_rec, val_rec, concepto) in enumerate(det_rows):
+                    sf_bg = CARD if j % 2 == 0 else (0.94, 0.91, 0.87, 1)
+                    sf = BoxLayout(size_hint_y=None, height=SUB_ROW, padding=[32, 0, 8, 0])
                     with sf.canvas.before:
-                        Color(0.96, 0.94, 0.92, 1)
+                        Color(*sf_bg)
                         _sf = Rectangle(pos=sf.pos, size=sf.size)
                     sf.bind(pos=lambda _, v, r=_sf: setattr(r, 'pos', v),
                             size=lambda _, v, r=_sf: setattr(r, 'size', v))
-                    nf_str = str(nf) if nf else '—'
+                    nf_str    = str(nf) if nf else '—'
                     fecha_str = str(fecha_rec)[:10] if fecha_rec else '—'
-                    conc_str  = (concepto[:22] + '…') if len(concepto) > 22 else concepto
-                    for txt, sx in [(nf_str, 0.28), (fecha_str, 0.24),
-                                    (conc_str, 0.30), (f'${val_rec:,.0f}', 0.18)]:
-                        lbl = Label(text=txt, font_size=10, color=TINTA,
+                    conc_str  = (concepto[:24] + '…') if len(concepto) > 24 else concepto
+                    for txt, sx, col in [
+                        (nf_str,              0.28, TEXT_SEC),
+                        (fecha_str,           0.22, TINTA),
+                        (conc_str,            0.32, MUTED),
+                        (f'${val_rec:,.0f}',  0.18, SUCCESS),
+                    ]:
+                        lbl = Label(text=txt, font_size=10, color=col,
                                     size_hint_x=sx, halign='left', valign='middle')
                         lbl.bind(size=lambda inst, v: setattr(inst, 'text_size',
                                                                (v[0]-4, v[1])))
                         sf.add_widget(lbl)
                     sub.add_widget(sf)
 
-            # Botón expandir/colapsar
-            tiene_det = bool(det_rows)
-            btn_exp = Button(
-                text='▼' if tiene_det else '—',
-                size_hint_x=0.15, font_size=11,
-                background_normal='', background_color=(0, 0, 0, 0),
-                color=TINTA if tiene_det else MUTED,
-                disabled=not tiene_det,
-            )
+            grupo.add_widget(sub)
 
-            def _toggle(_, sub=sub, grupo=grupo, sub_h=sub_h, btn=btn_exp):
+            # Divisor
+            div = BoxLayout(size_hint_y=None, height=1)
+            with div.canvas.before:
+                Color(*LINE)
+                Rectangle(pos=div.pos, size=div.size)
+            grupo.add_widget(div)
+
+            def _toggle(_, sub=sub, grupo=grupo, sub_h=sub_h,
+                        btn=btn_exp, row_h=ROW_H):
                 if sub.height == 0:
-                    sub.height = sub_h
-                    grupo.height = 30 + sub_h
+                    sub.height  = sub_h
+                    sub.opacity = 1
+                    grupo.height = row_h + sub_h + 1
                     btn.text = '▲'
                 else:
-                    sub.height = 0
-                    grupo.height = 30
+                    sub.height  = 0
+                    sub.opacity = 0
+                    grupo.height = row_h + 1
                     btn.text = '▼'
 
             btn_exp.bind(on_press=_toggle)
-            fila.add_widget(btn_exp)
-
-            grupo.add_widget(fila)
-            grupo.add_widget(sub)
             tabla.add_widget(grupo)
 
         scroll.add_widget(tabla)
