@@ -344,18 +344,35 @@ def importar_recaudo(filepath, modo='nuevo'):
 
     cursor = conn.cursor()
     try:
-        periodos = _periodos_en_df(df)
+        # Mapa numero_factura → (año, mes) desde las facturas ya importadas.
+        # Permite registrar cada recaudo en el período de su factura original,
+        # no en el mes del archivo de recaudo.
+        cursor.execute(
+            "SELECT numero_factura, año, mes FROM facturas WHERE numero_factura IS NOT NULL"
+        )
+        factura_map = {row[0]: (str(row[1]), str(row[2])) for row in cursor.fetchall()}
 
-        # Si modo=reemplazar, limpiar los períodos antes de insertar
+        # modo=reemplazar: borrar por numero_factura (no por período del archivo)
         if modo == 'reemplazar':
-            for año, mes in periodos:
+            nfs = []
+            for _, row in df.iterrows():
+                raw = row.get('NUMERO_FACTURA', None)
+                if raw:
+                    try:
+                        nfs.append(int(float(str(raw))))
+                    except Exception:
+                        pass
+            for i in range(0, len(nfs), _BATCH):
+                lote = nfs[i:i + _BATCH]
+                ph = ', '.join(['%s'] * len(lote))
                 cursor.execute(
-                    "DELETE FROM recaudos WHERE año=%s AND mes=%s", (año, mes)
+                    f"DELETE FROM recaudos WHERE numero_factura IN ({ph})", lote
                 )
             conn.commit()
 
         para_insertar = []
-        omitidos      = 0
+        omitidos    = 0
+        sin_factura = 0   # facturas del archivo que aún no están en DB
 
         def s(val, maxlen=100):
             return str(val or '')[:maxlen]
@@ -383,6 +400,15 @@ def importar_recaudo(filepath, modo='nuevo'):
                     except Exception:
                         numero_factura = None
 
+                # Período correcto: el de la factura, no el del archivo
+                if numero_factura and numero_factura in factura_map:
+                    año_rec, mes_rec = factura_map[numero_factura]
+                else:
+                    año_rec = str(_get_ano(row))
+                    mes_rec = _normalizar_mes(row.get('MES', ''))
+                    if numero_factura:
+                        sin_factura += 1
+
                 para_insertar.append((
                     susccodi,
                     int(float(str(row.get('CUENTA_CONTRATO', 0) or 0))),
@@ -397,8 +423,8 @@ def importar_recaudo(filepath, modo='nuevo'):
                     float(row.get('VALOR_RECIBO', 0) or 0),
                     s(row.get('SECTOR'), 50),
                     s(row.get('MUNICIPIO'), 100),
-                    _get_ano(row),
-                    _normalizar_mes(row.get('MES', '')),
+                    año_rec,
+                    mes_rec,
                 ))
             except Exception:
                 omitidos += 1
@@ -406,12 +432,16 @@ def importar_recaudo(filepath, modo='nuevo'):
         if not para_insertar:
             return True, f"Recaudo: sin registros nuevos ({omitidos} omitidos)"
 
-        # INSERT IGNORE: el índice único (cuenta_contrato, año, mes) rechaza duplicados
         _REC_IGNORE = _REC_PREFIX.replace('INSERT INTO recaudos', 'INSERT IGNORE INTO recaudos')
-        insertadas = _bulk_exec(cursor, conn, _REC_IGNORE, _REC_PH, '', para_insertar)
-        duplicadas = len(para_insertar) - insertadas
-        return True, (f"Recaudo importado: {insertadas} registros"
-                      + (f", {duplicadas} omitidos/duplicados" if duplicadas else ""))
+        insertadas  = _bulk_exec(cursor, conn, _REC_IGNORE, _REC_PH, '', para_insertar)
+        duplicadas  = len(para_insertar) - insertadas
+
+        partes = [f"Recaudo importado: {insertadas} registros"]
+        if sin_factura:
+            partes.append(f"{sin_factura} sin factura en DB (se usó período del archivo)")
+        if duplicadas:
+            partes.append(f"{duplicadas} duplicados omitidos")
+        return True, ', '.join(partes)
 
     except Exception as e:
         conn.rollback()
@@ -599,18 +629,33 @@ def previsualizar_recaudo(filepath):
     if not conn:
         return False, "Error de conexión"
     cursor = conn.cursor()
+    factura_map         = {}
     periodos_existentes = []
     try:
-        # Detectar períodos del archivo que ya tienen datos en DB
-        periodos_existentes = _periodos_con_datos(cursor, 'recaudos',
-                                                   _periodos_en_df(df))
+        cursor.execute(
+            "SELECT numero_factura, año, mes FROM facturas WHERE numero_factura IS NOT NULL"
+        )
+        factura_map = {row[0]: (str(row[1]), str(row[2])) for row in cursor.fetchall()}
+
+        # Períodos reales = los de las facturas, no el mes del archivo
+        periodos_reales = set()
+        for _, row in df.iterrows():
+            raw = row.get('NUMERO_FACTURA', None)
+            if raw:
+                try:
+                    nf = int(float(str(raw)))
+                    if nf in factura_map:
+                        periodos_reales.add(factura_map[nf])
+                except Exception:
+                    pass
+        periodos_existentes = _periodos_con_datos(cursor, 'recaudos', periodos_reales)
     except Exception as e:
         return False, f"Error DB: {e}"
     finally:
         cursor.close()
         conn.close()
 
-    total = nuevas = omitidas = 0
+    total = nuevas = omitidas = sin_factura = 0
     periodos = set()
     muestra  = []
 
@@ -634,9 +679,15 @@ def previsualizar_recaudo(filepath):
                 except Exception:
                     numero_factura = None
 
-            año  = _get_ano(row)
-            mes  = _normalizar_mes(row.get('MES', ''))
             valor = float(row.get('VALOR_RECIBO', 0) or 0)
+
+            if numero_factura and numero_factura in factura_map:
+                año, mes = factura_map[numero_factura]
+            else:
+                año = str(_get_ano(row))
+                mes = _normalizar_mes(row.get('MES', ''))
+                if numero_factura:
+                    sin_factura += 1
 
             if año and mes:
                 periodos.add(f'{mes}/{año}')
@@ -645,9 +696,7 @@ def previsualizar_recaudo(filepath):
             if len(muestra) < 8:
                 nf_str     = str(numero_factura) if numero_factura else '—'
                 cuenta_str = str(int(float(str(row.get('CUENTA_CONTRATO', 0) or 0))))
-                muestra.append((nf_str, cuenta_str,
-                                 str(fecha_rec) if fecha_rec else '—',
-                                 f'${valor:,.0f}'))
+                muestra.append((nf_str, cuenta_str, f'{mes}/{año}', f'${valor:,.0f}'))
         except Exception:
             omitidas += 1
 
@@ -656,8 +705,9 @@ def previsualizar_recaudo(filepath):
         'total': total,
         'nuevas': nuevas,
         'omitidas': omitidas,
+        'sin_factura': sin_factura,
         'periodos': sorted(periodos, key=_sort_periodo),
         'periodos_existentes': periodos_existentes,
-        'columnas': ['N° Factura', 'Cuenta', 'Fecha Recaudo', 'Valor'],
+        'columnas': ['N° Factura', 'Cuenta', 'Período factura', 'Valor'],
         'muestra': muestra,
     }

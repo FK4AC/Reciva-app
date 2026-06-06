@@ -103,6 +103,15 @@ class ImportarScreen(Screen):
                 (f"{retirados:,}",     'Se marcarán RETIRADO',
                  WARNING if retirados > 0 else MUTED),
             ]
+        elif d['tipo'] == 'Recaudo':
+            sin_fac = d.get('sin_factura', 0)
+            tile_datos = [
+                (f"{d['total']:,}",    'Filas en archivo',      TINTA),
+                (f"{d['nuevas']:,}",   'Se insertarán',         SUCCESS),
+                (f"{d['omitidas']:,}", 'Ya existen / vacías',   MUTED),
+                (f"{sin_fac:,}",       'Sin factura en DB',
+                 WARNING if sin_fac > 0 else MUTED),
+            ]
         else:
             tile_datos = [
                 (f"{d['total']:,}",    'Filas en archivo',    TINTA),
