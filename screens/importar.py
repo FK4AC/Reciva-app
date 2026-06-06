@@ -178,28 +178,54 @@ class ImportarScreen(Screen):
                 halign='right', text_size=(700, 16)
             ))
 
+        # ── Advertencia de período existente (solo facturación y recaudo) ──
+        periodos_existentes = d.get('periodos_existentes', [])
+        if periodos_existentes and not es_catastro:
+            adv = BoxLayout(orientation='vertical', size_hint_y=None, height=58,
+                            padding=[14, 6], spacing=2)
+            with adv.canvas.before:
+                Color(0.800, 0.500, 0.050, 0.15)
+                adv_r = Rectangle(pos=adv.pos, size=adv.size)
+            adv.bind(pos=lambda _, v: setattr(adv_r, 'pos', v),
+                     size=lambda _, v: setattr(adv_r, 'size', v))
+            periodos_txt = ', '.join(
+                f"{p} ({c:,} reg.)" for p, c in periodos_existentes
+            )
+            adv.add_widget(Label(
+                text=f'Advertencia — ya existen datos para: {periodos_txt}',
+                font_size=11, bold=True, color=(0.6, 0.35, 0.0, 1),
+                halign='left', text_size=(700, 20), size_hint_y=None, height=20,
+            ))
+            adv.add_widget(Label(
+                text='Elige "Agregar nuevos" para ignorar duplicados  ·  '
+                     '"Reemplazar" para borrar el período y recargar desde el archivo.',
+                font_size=10, color=WARNING,
+                halign='left', text_size=(700, 18), size_hint_y=None, height=18,
+            ))
+            body.add_widget(adv)
+
         # ── Footer ────────────────────────────────────────────────
-        footer = BoxLayout(size_hint_y=None, height=56, spacing=10, padding=[16, 10])
+        footer = BoxLayout(size_hint_y=None, height=56, spacing=8, padding=[16, 10])
         with footer.canvas.before:
             Color(*STAGE)
             r_ft = Rectangle(pos=footer.pos, size=footer.size)
         footer.bind(pos=lambda _, v: setattr(r_ft, 'pos', v))
         footer.bind(size=lambda _, v: setattr(r_ft, 'size', v))
 
-        popup = Popup(title='', content=content, size_hint=(0.60, 0.76),
+        popup = Popup(title='', content=content, size_hint=(0.60, 0.80),
                       background_color=CARD, separator_height=0)
-
-        def _confirmar(_):
-            popup.dismiss()
-            self.procesar(filepath, tipo)
 
         btn_cancelar = Button(
             text='Cancelar',
             background_normal='', background_color=LINE,
             color=TINTA, font_size=12,
-            size_hint=(0.32, None), height=36
+            size_hint=(None, None), size=(110, 36),
         )
+        btn_cancelar.bind(on_press=popup.dismiss)
+        footer.add_widget(btn_cancelar)
+
         hay_cambios = d['nuevas'] > 0 or d.get('actualizados', 0) > 0 or retirados > 0
+
         if es_catastro:
             if hay_cambios:
                 partes = []
@@ -209,23 +235,52 @@ class ImportarScreen(Screen):
                 lbl_ok = 'Confirmar — ' + ', '.join(partes)
             else:
                 lbl_ok = 'Sin cambios que aplicar'
+            btn_ok = Button(
+                text=lbl_ok,
+                background_normal='', background_color=SUCCESS,
+                color=(1, 1, 1, 1), font_size=12,
+                size_hint=(1, None), height=36,
+                disabled=(not hay_cambios),
+            )
+            btn_ok.bind(on_press=lambda _: (popup.dismiss(), self.procesar(filepath, tipo)))
+            footer.add_widget(btn_ok)
+
+        elif periodos_existentes:
+            # Dos opciones: agregar nuevos o reemplazar el período
+            btn_agregar = Button(
+                text=f'Agregar nuevos ({d["nuevas"]:,})',
+                background_normal='', background_color=SUCCESS,
+                color=(1, 1, 1, 1), font_size=11,
+                size_hint=(1, None), height=36,
+                disabled=(d['nuevas'] == 0),
+            )
+            btn_reemplazar = Button(
+                text='Reemplazar período',
+                background_normal='', background_color=VERMILLON,
+                color=(1, 1, 1, 1), font_size=11,
+                size_hint=(1, None), height=36,
+            )
+            btn_agregar.bind(on_press=lambda _: (
+                popup.dismiss(), self.procesar(filepath, tipo, 'nuevo')))
+            btn_reemplazar.bind(on_press=lambda _: (
+                popup.dismiss(), self.procesar(filepath, tipo, 'reemplazar')))
+            footer.add_widget(btn_agregar)
+            footer.add_widget(btn_reemplazar)
+
         else:
             lbl_ok = (f"Confirmar — insertar {d['nuevas']:,} registros"
                       if d['nuevas'] > 0 else 'Nada nuevo que insertar')
-        btn_confirmar = Button(
-            text=lbl_ok,
-            background_normal='', background_color=SUCCESS,
-            color=(1, 1, 1, 1), font_size=12,
-            size_hint=(0.68, None), height=36,
-            disabled=(not hay_cambios)
-        )
-        btn_cancelar.bind(on_press=popup.dismiss)
-        btn_confirmar.bind(on_press=_confirmar)
+            btn_ok = Button(
+                text=lbl_ok,
+                background_normal='', background_color=SUCCESS,
+                color=(1, 1, 1, 1), font_size=12,
+                size_hint=(1, None), height=36,
+                disabled=(not hay_cambios),
+            )
+            btn_ok.bind(on_press=lambda _: (popup.dismiss(), self.procesar(filepath, tipo)))
+            footer.add_widget(btn_ok)
 
-        footer.add_widget(btn_cancelar)
-        footer.add_widget(btn_confirmar)
         content.add_widget(footer)
-
         popup.open()
 
     def _mostrar_popup_error(self, mensaje):
@@ -305,7 +360,7 @@ class ImportarScreen(Screen):
     # ------------------------------------------------------------------
     # Importación real (siempre en thread)
     # ------------------------------------------------------------------
-    def procesar(self, filepath, tipo):
+    def procesar(self, filepath, tipo, modo='nuevo'):
         self.mensaje = ''
         overlay.show('Importando…')
 
@@ -315,9 +370,9 @@ class ImportarScreen(Screen):
                 if tipo == 'catastro':
                     ok, msg = importar_catastro(filepath)
                 elif tipo == 'facturacion':
-                    ok, msg = importar_facturacion(filepath)
+                    ok, msg = importar_facturacion(filepath, modo)
                 elif tipo == 'recaudo':
-                    ok, msg = importar_recaudo(filepath)
+                    ok, msg = importar_recaudo(filepath, modo)
                 else:
                     ok, msg = False, 'Tipo desconocido'
             except Exception as e:
