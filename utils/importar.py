@@ -19,11 +19,19 @@ def _verificar_columnas(cols, requeridas):
 
 
 def _read_file(filepath):
-    """Lee Excel o CSV pipe-delimitado y devuelve DataFrame con columnas normalizadas."""
+    """Lee Excel o CSV (|, ;, ,) y devuelve DataFrame con columnas normalizadas."""
     if filepath.lower().endswith('.csv'):
-        try:
-            df = pd.read_csv(filepath, sep='|', encoding='latin-1')
-        except Exception:
+        df = None
+        for sep in ('|', ';', ','):
+            try:
+                tmp = pd.read_csv(filepath, sep=sep, encoding='latin-1')
+                # Si solo queda 1 columna, el separador fue incorrecto
+                if len(tmp.columns) > 1:
+                    df = tmp
+                    break
+            except Exception:
+                pass
+        if df is None:
             df = pd.read_csv(filepath, encoding='utf-8-sig')
         df.columns = [c.strip().strip('"').upper() for c in df.columns]
     else:
@@ -32,15 +40,42 @@ def _read_file(filepath):
     return df
 
 
+def _parse_float(val):
+    """Convierte a float tolerando coma decimal ('7.980,0' → 7980.0)."""
+    try:
+        return float(str(val or 0).replace(',', '.'))
+    except Exception:
+        try:
+            # Formato europeo: '7.980,50' → quitar puntos de miles, coma → punto
+            return float(str(val).replace('.', '').replace(',', '.'))
+        except Exception:
+            return 0.0
+
+
 def _get_ano(row):
-    """Lee el año tolerando variantes de codificación de Ñ (AÑO, A?O, ANO)."""
+    """Lee el año tolerando AÑO/A?O/ANO o columna PERIODO (YYYYMM)."""
     for key in row.keys():
         if key.upper().replace('Ñ', 'N').replace('?', 'N') == 'ANO':
             try:
                 return int(float(str(row[key])))
             except Exception:
                 pass
+    # Fallback: columna PERIODO con formato YYYYMM
+    periodo = str(row.get('PERIODO', '') or '')
+    if len(periodo) == 6 and periodo.isdigit():
+        return int(periodo[:4])
     return 0
+
+
+def _get_mes(row):
+    """Lee el mes desde MES o desde PERIODO (YYYYMM)."""
+    mes = row.get('MES', None)
+    if mes is not None and str(mes).strip():
+        return _normalizar_mes(mes)
+    periodo = str(row.get('PERIODO', '') or '')
+    if len(periodo) == 6 and periodo.isdigit():
+        return str(int(periodo[4:6]))
+    return ''
 
 
 def _normalizar_mes(raw):
@@ -260,11 +295,14 @@ def importar_facturacion(filepath, modo='nuevo'):
 
         for _, row in df.iterrows():
             try:
+                # NUMERO_FACTURA puede llamarse FACTURA en algunos formatos
+                nf_raw = (row.get('NUMERO_FACTURA') or row.get('FACTURA') or 0)
                 numero_factura = int(
-                    float(str(row.get('NUMERO_FACTURA', 0)).replace('E', 'e'))
+                    float(str(nf_raw).replace('E', 'e'))
                 )
-                susccodi = int(float(str(row.get('SUSCCODI', 0))))
-                if not numero_factura or not susccodi or numero_factura in vistos:
+                # SUSCCODI puede estar ausente; se usa 0 como fallback
+                susccodi = int(_parse_float(row.get('SUSCCODI', 0) or 0))
+                if not numero_factura or numero_factura in vistos:
                     omitidos += 1
                     continue
                 vistos.add(numero_factura)
@@ -275,22 +313,37 @@ def importar_facturacion(filepath, modo='nuevo'):
                 except Exception:
                     fecha = None
 
+                # CUENTA_CONTRATO puede llamarse CUENTA en algunos formatos
+                cuenta_contrato = int(_parse_float(
+                    row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0
+                ))
+                subcategoria = str(
+                    row.get('SUBCATEGORIA') or row.get('CATEGORIA') or ''
+                )
+                estrato = str(row.get('ESTRATO_CONTRATO', '') or
+                              subcategoria.split('-')[0].strip())
+                # VALOR_RECIBO puede llamarse VALOR_FACTURADO_TERCEROS
+                valor_recibo = _parse_float(
+                    row.get('VALOR_RECIBO') if row.get('VALOR_RECIBO') is not None
+                    else row.get('VALOR_FACTURADO_TERCEROS', 0)
+                )
+
                 para_insertar.append((
                     numero_factura,
                     susccodi,
-                    int(float(str(row.get('CUENTA_CONTRATO', 0) or 0))),
+                    cuenta_contrato,
                     fecha,
-                    str(row.get('SUBCATEGORIA', '') or ''),
-                    str(row.get('ESTRATO_CONTRATO', '') or ''),
+                    subcategoria,
+                    estrato,
                     str(row.get('CODIGO_CONCEPTO', '') or ''),
                     str(row.get('CONCEPTO', '') or ''),
-                    float(row.get('IMPORTE', 0) or 0),
-                    float(row.get('VALOR_RECIBO', 0) or 0),
+                    _parse_float(row.get('IMPORTE', 0)),
+                    valor_recibo,
                     str(row.get('OPERACIÓN', '') or row.get('OPERACION', '') or ''),
                     str(row.get('SECTOR', '') or ''),
                     str(row.get('MUNICIPIO', '') or ''),
                     _get_ano(row),
-                    _normalizar_mes(row.get('MES', '')),
+                    _get_mes(row),
                 ))
             except Exception:
                 omitidos += 1
