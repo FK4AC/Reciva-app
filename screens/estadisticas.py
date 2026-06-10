@@ -4,12 +4,13 @@ from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle, RoundedRectangle
+from widgets.components import HoverRow, EmptyState
 from kivy.properties import StringProperty, ListProperty
 from kivy.clock import Clock
 
 from db.connection import get_connection
 import utils.overlay as overlay
-from theme import (TINTA, STAGE, CARD, VERMILLON, LINE, MUTED,
+from theme import (TINTA, STAGE, CARD, LINE, MUTED,
                    TEXT_SEC, SUCCESS, WARNING, DANGER)
 
 MESES_NOMBRE = {
@@ -28,6 +29,7 @@ class EstadisticasScreen(Screen):
     def on_enter(self):
         self._vista = 'estrato'
         self._datos = {}
+        self._incluir_huerfanos = False
         overlay.show('Cargando…')
         threading.Thread(target=self._tarea_init, daemon=True).start()
 
@@ -43,7 +45,7 @@ class EstadisticasScreen(Screen):
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT DISTINCT año FROM facturas WHERE año IS NOT NULL ORDER BY año DESC"
+                "SELECT DISTINCT anno FROM facturas WHERE anno IS NOT NULL ORDER BY anno DESC"
             )
             anios_db = {str(r[0]) for r in cur.fetchall()}
             anios_db.update({'2025', '2026'})
@@ -53,8 +55,8 @@ class EstadisticasScreen(Screen):
             d['meses'] = list(MESES_NOMBRE.values())
 
             cur.execute(
-                "SELECT año, mes FROM facturas WHERE año IS NOT NULL AND mes IS NOT NULL "
-                "ORDER BY año DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1"
+                "SELECT anno, mes FROM facturas WHERE anno IS NOT NULL AND mes IS NOT NULL "
+                "ORDER BY anno DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1"
             )
             row = cur.fetchone()
             if row:
@@ -87,6 +89,21 @@ class EstadisticasScreen(Screen):
                 daemon=True,
             ).start()
 
+    # ── Toggle huérfanos ─────────────────────────────────────────────
+    def toggle_huerfanos(self):
+        self._incluir_huerfanos = not self._incluir_huerfanos
+        btn = self.ids.btn_huerfanos
+        btn.is_active = self._incluir_huerfanos
+        btn.text = 'Con pagos sin factura' if self._incluir_huerfanos else 'Pagos sin factura'
+        año = self.ids.sp_año.text
+        mes_txt = self.ids.sp_mes.text
+        if año not in ('Año', '') and mes_txt not in ('Mes', ''):
+            mes = MESES_NUM.get(mes_txt, mes_txt)
+            overlay.show('Calculando estadísticas…')
+            threading.Thread(
+                target=lambda: self._tarea_stats(año, mes), daemon=True
+            ).start()
+
     # ── Botón Actualizar ─────────────────────────────────────────────
     def actualizar(self):
         año = self.ids.sp_año.text
@@ -98,11 +115,12 @@ class EstadisticasScreen(Screen):
         threading.Thread(target=lambda: self._tarea_stats(año, mes), daemon=True).start()
 
     # ── Consulta BD ──────────────────────────────────────────────────
-    def _tarea_stats(self, año, mes):
+    def _tarea_stats(self, anno, mes):
         d = {
-            'año': año, 'mes': mes,
+            'año': anno, 'mes': mes,
             'fac': 0.0, 'rec': 0.0,
             'estratos': [], 'barrios': [],
+            'huerfanos_n': 0, 'huerfanos_sum': 0.0,
             'sin_conexion': False,
         }
         conn = get_connection()
@@ -110,22 +128,44 @@ class EstadisticasScreen(Screen):
             d['sin_conexion'] = True
             Clock.schedule_once(lambda *_: self._aplicar_stats(d), 0)
             return
+        huerfanos = self._incluir_huerfanos
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT COALESCE(SUM(valor_recibo),0) FROM facturas WHERE año=%s AND mes=%s",
-                (año, mes),
+                "SELECT COALESCE(SUM(valor_recibo),0) FROM facturas WHERE anno=%s AND mes=%s",
+                (anno, mes),
             )
             d['fac'] = float(cur.fetchone()[0])
-            cur.execute("""
-                SELECT COALESCE(SUM(r.valor_recibo), 0)
-                FROM recaudos r
-                INNER JOIN facturas f ON f.numero_factura = r.numero_factura
-                WHERE f.año=%s AND f.mes=%s
-            """, (año, mes))
+
+            if huerfanos:
+                cur.execute(
+                    "SELECT COALESCE(SUM(valor_recibo),0) FROM recaudos WHERE anno=%s AND mes=%s",
+                    (anno, mes),
+                )
+            else:
+                cur.execute("""
+                    SELECT COALESCE(SUM(r.valor_recibo), 0)
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE f.anno=%s AND f.mes=%s
+                """, (anno, mes))
             d['rec'] = float(cur.fetchone()[0])
 
-            # Por estrato — recaudado via JOIN por numero_factura
+            if huerfanos:
+                rec_subquery = """
+                    SELECT cuenta_contrato, SUM(valor_recibo) AS total_rec
+                    FROM recaudos WHERE anno = %s AND mes = %s
+                    GROUP BY cuenta_contrato
+                """
+            else:
+                rec_subquery = """
+                    SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE f.anno = %s AND f.mes = %s
+                    GROUP BY f.cuenta_contrato
+                """
+
             cur.execute("""
                 SELECT
                     COALESCE(s.estrato, 'Sin estrato')  AS grupo,
@@ -135,22 +175,15 @@ class EstadisticasScreen(Screen):
                 FROM suscriptores s
                 LEFT JOIN (
                     SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
-                    FROM facturas WHERE año = %s AND mes = %s
+                    FROM facturas WHERE anno = %s AND mes = %s
                     GROUP BY cuenta_contrato
                 ) fa ON fa.cuenta_contrato = s.cuenta
-                LEFT JOIN (
-                    SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
-                    FROM recaudos r
-                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
-                    WHERE f.año = %s AND f.mes = %s
-                    GROUP BY f.cuenta_contrato
-                ) ra ON ra.cuenta_contrato = s.cuenta
+                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.cuenta
                 GROUP BY s.estrato
                 ORDER BY CAST(s.estrato AS UNSIGNED)
-            """, (año, mes, año, mes))
+            """.format(rec_subquery), (anno, mes, anno, mes))
             d['estratos'] = cur.fetchall()
 
-            # Por barrio
             cur.execute("""
                 SELECT
                     COALESCE(s.barrio, 'Sin barrio')    AS grupo,
@@ -160,20 +193,26 @@ class EstadisticasScreen(Screen):
                 FROM suscriptores s
                 LEFT JOIN (
                     SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
-                    FROM facturas WHERE año = %s AND mes = %s
+                    FROM facturas WHERE anno = %s AND mes = %s
                     GROUP BY cuenta_contrato
                 ) fa ON fa.cuenta_contrato = s.cuenta
-                LEFT JOIN (
-                    SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
-                    FROM recaudos r
-                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
-                    WHERE f.año = %s AND f.mes = %s
-                    GROUP BY f.cuenta_contrato
-                ) ra ON ra.cuenta_contrato = s.cuenta
+                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.cuenta
                 GROUP BY s.barrio
                 ORDER BY s.barrio
-            """, (año, mes, año, mes))
+            """.format(rec_subquery), (anno, mes, anno, mes))
             d['barrios'] = cur.fetchall()
+
+            cur.execute("""
+                SELECT COUNT(*), COALESCE(SUM(r.valor_recibo), 0)
+                FROM recaudos r
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM facturas f
+                    WHERE f.numero_factura = r.numero_factura
+                )
+            """)
+            hrow = cur.fetchone()
+            d['huerfanos_n']   = int(hrow[0])
+            d['huerfanos_sum'] = float(hrow[1])
 
         except Exception as e:
             print(f'Error estadísticas stats: {e}')
@@ -207,17 +246,30 @@ class EstadisticasScreen(Screen):
         self.ids.lbl_pct.color     = list(pct_col)
         self.ids.lbl_cartera.color = list(DANGER if cartera > 0 else SUCCESS)
 
+        n_h = d.get('huerfanos_n', 0)
+        s_h = d.get('huerfanos_sum', 0.0)
+        if self._incluir_huerfanos:
+            self.ids.lbl_aviso_huerfanos.text = (
+                f'  ℹ  Modo: con huérfanos — incluye recaudos sin factura importada'
+                f' ({n_h:,} globales por ${s_h:,.0f})'
+            )
+        elif n_h > 0:
+            self.ids.lbl_aviso_huerfanos.text = (
+                f'  ⚠  {n_h:,} recaudos por ${s_h:,.0f} sin factura importada'
+                f' — no están incluidos en las cifras anteriores'
+            )
+        else:
+            self.ids.lbl_aviso_huerfanos.text = ''
+
         self._datos = d
         self._render(self._vista)
 
     # ── Toggle estrato / barrio ──────────────────────────────────────
     def cambiar_vista(self, vista):
         self._vista = vista
-        self.ids.btn_est.background_color = VERMILLON if vista == 'estrato' else LINE
-        self.ids.btn_est.color            = (1, 1, 1, 1) if vista == 'estrato' else list(TINTA)
-        self.ids.btn_bar.background_color = VERMILLON if vista == 'barrio'  else LINE
-        self.ids.btn_bar.color            = (1, 1, 1, 1) if vista == 'barrio'  else list(TINTA)
-        self.ids.lbl_hdr_grupo.text       = 'Barrio' if vista == 'barrio' else 'Estrato'
+        self.ids.btn_est.is_active = (vista == 'estrato')
+        self.ids.btn_bar.is_active = (vista == 'barrio')
+        self.ids.lbl_hdr_grupo.text = 'Barrio' if vista == 'barrio' else 'Estrato'
         if self._datos:
             self._render(vista)
 
@@ -227,6 +279,14 @@ class EstadisticasScreen(Screen):
         tabla = self.ids.tabla_body
         tabla.clear_widgets()
 
+        if not rows:
+            tabla.add_widget(EmptyState(
+                icon_text='○',
+                message='Sin datos para este período',
+                subtitle='Selecciona un año y mes con información disponible',
+            ))
+            return
+
         for i, (grupo, total_sus, facturado, recaudado) in enumerate(rows):
             facturado = float(facturado)
             recaudado = float(recaudado)
@@ -234,13 +294,10 @@ class EstadisticasScreen(Screen):
             pct       = (recaudado / facturado * 100) if facturado > 0 else 0.0
             pct_col   = SUCCESS if pct >= 80 else (WARNING if pct >= 50 else DANGER)
             bg        = CARD if i % 2 == 0 else STAGE
+            hover_bg  = STAGE if i % 2 == 0 else (0.961, 0.945, 0.922, 1)
 
-            fila = BoxLayout(orientation='vertical', size_hint_y=None, height=48)
-            with fila.canvas.before:
-                Color(*bg)
-                r = Rectangle(pos=fila.pos, size=fila.size)
-            fila.bind(pos=lambda _, v, rr=r: setattr(rr, 'pos', v),
-                      size=lambda _, v, rr=r: setattr(rr, 'size', v))
+            fila = HoverRow(orientation='vertical', size_hint_y=None, height=48,
+                            base_color=bg, hover_color=hover_bg)
 
             # Fila de datos
             top = BoxLayout(size_hint_y=None, height=38)

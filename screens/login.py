@@ -47,6 +47,7 @@ class LoginScreen(Screen):
             app = self.manager.app
             app.current_user = user
             app.user_rol = user.get('rol', 'operador')
+            app.usuario_nombre = user.get('nombre', '')
             # operador va directo a tickets, los demás al dashboard
             app.root.current = 'tickets' if app.user_rol == 'operador' else 'dashboard'
         else:

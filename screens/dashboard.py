@@ -6,7 +6,7 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.graphics import Color, Rectangle, RoundedRectangle
-from kivy.properties import StringProperty, ListProperty
+from kivy.properties import StringProperty, ListProperty, NumericProperty
 from kivy.clock import Clock
 import threading
 from db.connection import get_connection
@@ -30,6 +30,7 @@ class DashboardScreen(Screen):
     pqr_abiertas       = StringProperty('—')
     tasa_cobro         = StringProperty('—')
     tasa_cobro_color   = ListProperty([0.549, 0.502, 0.467, 1])
+    tasa_cobro_pct     = NumericProperty(0.0)
     periodo_label      = StringProperty('Selecciona un período')
     años_disponibles   = ListProperty([])
     meses_disponibles  = ListProperty([])
@@ -58,7 +59,7 @@ class DashboardScreen(Screen):
                 cursor.execute("SELECT COUNT(*) FROM pqr WHERE estado != 'Resuelto'")
                 d['pqr'] = str(cursor.fetchone()[0])
                 cursor.execute(
-                    "SELECT DISTINCT año FROM facturas WHERE año IS NOT NULL ORDER BY año DESC"
+                    "SELECT DISTINCT anno FROM facturas WHERE anno IS NOT NULL ORDER BY anno DESC"
                 )
                 d['años'] = [str(r[0]) for r in cursor.fetchall()]
                 cursor.execute("""
@@ -67,31 +68,31 @@ class DashboardScreen(Screen):
                 """)
                 d['meses'] = [str(r[0]) for r in cursor.fetchall()]
                 cursor.execute("""
-                    SELECT año, mes FROM facturas
-                    WHERE año IS NOT NULL AND mes IS NOT NULL
-                    ORDER BY año DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1
+                    SELECT anno, mes FROM facturas
+                    WHERE anno IS NOT NULL AND mes IS NOT NULL
+                    ORDER BY anno DESC, CAST(mes AS UNSIGNED) DESC LIMIT 1
                 """)
                 row = cursor.fetchone()
                 if row:
                     año, mes = str(row[0]), str(row[1])
                     d['año'], d['mes'] = año, mes
                     cursor.execute(
-                        "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE año=%s AND mes=%s",
+                        "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE anno=%s AND mes=%s",
                         (año, mes)
                     )
                     d['fac'] = float(cursor.fetchone()[0])
                     cursor.execute(
-                        "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE año=%s AND mes=%s",
+                        "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE anno=%s AND mes=%s",
                         (año, mes)
                     )
                     d['rec'] = float(cursor.fetchone()[0])
                     cursor.execute("""
                         SELECT COUNT(DISTINCT cuenta_contrato) FROM facturas f
-                        WHERE año=%s AND mes=%s
+                        WHERE anno=%s AND mes=%s
                         AND NOT EXISTS (
                             SELECT 1 FROM recaudos r
                             WHERE r.cuenta_contrato = f.cuenta_contrato
-                            AND r.año = f.año AND r.mes = f.mes
+                            AND r.anno = f.anno AND r.mes = f.mes
                         )
                     """, (año, mes))
                     d['deuda_sus'] = cursor.fetchone()[0]
@@ -106,6 +107,7 @@ class DashboardScreen(Screen):
         if fac > 0:
             pct = rec / fac * 100
             self.tasa_cobro = f'{pct:.1f}%'
+            self.tasa_cobro_pct = min(pct, 100.0)
             if pct >= 80:
                 self.tasa_cobro_color = list(SUCCESS)
             elif pct >= 50:
@@ -114,6 +116,7 @@ class DashboardScreen(Screen):
                 self.tasa_cobro_color = list(DANGER)
         else:
             self.tasa_cobro = '—'
+            self.tasa_cobro_pct = 0.0
             self.tasa_cobro_color = [0.549, 0.502, 0.467, 1]
 
     def _aplicar_inicio(self, d):
@@ -137,39 +140,39 @@ class DashboardScreen(Screen):
             self.sus_con_deuda = f'{d["deuda_sus"]:,}'
             self._set_tasa(d['fac'], d['rec'])
 
-    def cambiar_periodo(self, año, mes):
-        if año in ('Año', '') or mes in ('Mes', ''):
+    def cambiar_periodo(self, anno, mes):
+        if anno in ('Año', '') or mes in ('Mes', ''):
             return
         overlay.show('Cargando período…')
         threading.Thread(
-            target=lambda: self._tarea_stats(año, mes), daemon=True
+            target=lambda: self._tarea_stats(anno, mes), daemon=True
         ).start()
 
-    def _tarea_stats(self, año, mes):
-        d = {'año': año, 'mes': mes, 'fac': 0.0, 'rec': 0.0, 'deuda_sus': 0}
+    def _tarea_stats(self, anno, mes):
+        d = {'año': anno, 'mes': mes, 'fac': 0.0, 'rec': 0.0, 'deuda_sus': 0}
         conn = get_connection()
         if conn:
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE año=%s AND mes=%s",
-                    (año, mes)
+                    "SELECT COALESCE(SUM(valor_recibo), 0) FROM facturas WHERE anno=%s AND mes=%s",
+                    (anno, mes)
                 )
                 d['fac'] = float(cursor.fetchone()[0])
                 cursor.execute(
-                    "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE año=%s AND mes=%s",
-                    (año, mes)
+                    "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE anno=%s AND mes=%s",
+                    (anno, mes)
                 )
                 d['rec'] = float(cursor.fetchone()[0])
                 cursor.execute("""
                     SELECT COUNT(DISTINCT cuenta_contrato) FROM facturas f
-                    WHERE año=%s AND mes=%s
+                    WHERE anno=%s AND mes=%s
                     AND NOT EXISTS (
                         SELECT 1 FROM recaudos r
                         WHERE r.cuenta_contrato = f.cuenta_contrato
-                        AND r.año = f.año AND r.mes = f.mes
+                        AND r.anno = f.anno AND r.mes = f.mes
                     )
-                """, (año, mes))
+                """, (anno, mes))
                 d['deuda_sus'] = cursor.fetchone()[0]
             except Exception as e:
                 print(f'Error stats dashboard: {e}')

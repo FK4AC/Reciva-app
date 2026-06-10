@@ -1,5 +1,5 @@
 from kivy.app import App
-from kivy.uix.screenmanager import ScreenManager, NoTransition
+from kivy.uix.screenmanager import ScreenManager, FadeTransition
 from kivy.core.text import LabelBase
 from kivy.properties import StringProperty
 from screens.login import LoginScreen
@@ -12,6 +12,7 @@ from screens.sin_conexion import SinConexionScreen
 from screens.usuarios import UsuariosScreen
 from screens.estadisticas import EstadisticasScreen
 from screens.menu import MenuLateral  # noqa: F401  (registra el widget para el kv)
+import widgets.components  # noqa: F401  (registra PillButton, AccentCard, FilterPill, TabButton…)
 
 LabelBase.register(
     name='Sora',
@@ -27,11 +28,12 @@ LabelBase.register(
 
 
 class RecivaApp(App):
-    current_user = None
-    user_rol = StringProperty('operador')
+    current_user   = None
+    user_rol       = StringProperty('operador')
+    usuario_nombre = StringProperty('')
 
     def build(self):
-        sm = ScreenManager(transition=NoTransition())
+        sm = ScreenManager(transition=FadeTransition(duration=0.15))
         sm.app = self
         sm.add_widget(LoginScreen(name='login'))
         sm.add_widget(DashboardScreen(name='dashboard'))

@@ -19,6 +19,7 @@ import utils.overlay as overlay
 from utils.estado_cuenta import generar_estado_cuenta
 from theme import (TINTA, BG, STAGE, CARD, VERMILLON, LADRILLO,
                    LINE, MUTED, TEXT_SEC, SUCCESS, WARNING, DANGER, SIDEBAR_BTN)
+from widgets.components import PillButton, EmptyState
 
 MESES = {
     1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -88,6 +89,13 @@ class SuscriptoresScreen(Screen):
         lista = self.ids.lista_suscriptores
         total = len(rows)
         self.mensaje = f'{total} suscriptores encontrados' + (' (máx. 300)' if total == 300 else '')
+        if not rows:
+            lista.add_widget(EmptyState(
+                icon_text='○',
+                message='Sin suscriptores encontrados',
+                subtitle='Intenta con otro término de búsqueda',
+            ))
+            return
         for i, (cuenta, nombre, barrio, estrato, estado) in enumerate(rows):
             lista.add_widget(self._fila(cuenta, nombre, barrio, estrato, estado, i))
 
@@ -126,8 +134,8 @@ class SuscriptoresScreen(Screen):
         overlay.show('Cargando suscriptor…')
 
         def _tarea():
-            info, facturas, recaudos, recaudos_det, pqr_list, error = \
-                None, {}, {}, {}, [], None
+            info, facturas, recaudos, recaudos_det, pqr_list, huerfanos, error = \
+                None, {}, {}, {}, [], [], None
             conn = get_connection()
             if not conn:
                 Clock.schedule_once(
@@ -143,27 +151,27 @@ class SuscriptoresScreen(Screen):
                 """, (cuenta,))
                 info = cursor.fetchone()
                 cursor.execute("""
-                    SELECT año, mes, SUM(valor_recibo)
+                    SELECT anno, mes, SUM(valor_recibo)
                     FROM facturas WHERE cuenta_contrato = %s
-                    GROUP BY año, mes ORDER BY año, mes
+                    GROUP BY anno, mes ORDER BY anno, mes
                 """, (cuenta,))
                 facturas = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
                 # JOIN por numero_factura: el período viene de la factura,
                 # no del año/mes almacenado en recaudos (puede ser fallback incorrecto)
                 cursor.execute("""
-                    SELECT f.año, f.mes,
+                    SELECT f.anno, f.mes,
                            r.numero_factura, r.fecha_recaudo,
-                           r.valor_recibo, r.concepto
+                           r.valor_recibo
                     FROM recaudos r
                     INNER JOIN facturas f ON f.numero_factura = r.numero_factura
                     WHERE r.cuenta_contrato = %s
-                    ORDER BY f.año, f.mes, r.fecha_recaudo
+                    ORDER BY f.anno, f.mes, r.fecha_recaudo
                 """, (cuenta,))
                 for r in cursor.fetchall():
                     key = (int(r[0]), int(r[1]))
                     recaudos[key] = recaudos.get(key, 0) + float(r[4])
                     recaudos_det.setdefault(key, []).append(
-                        (r[2], r[3], float(r[4]), str(r[5] or ''))
+                        (r[2], r[3], float(r[4]))
                     )
                 cursor.execute("""
                     SELECT id, tipo, asunto, estado, fecha_creacion
@@ -171,6 +179,18 @@ class SuscriptoresScreen(Screen):
                     ORDER BY fecha_creacion DESC
                 """, (cuenta,))
                 pqr_list = cursor.fetchall()
+                cursor.execute("""
+                    SELECT r.numero_factura, r.fecha_recaudo,
+                           r.valor_recibo
+                    FROM recaudos r
+                    WHERE r.cuenta_contrato = %s
+                      AND NOT EXISTS (
+                          SELECT 1 FROM facturas f
+                          WHERE f.numero_factura = r.numero_factura
+                      )
+                    ORDER BY r.fecha_recaudo
+                """, (cuenta,))
+                huerfanos = list(cursor.fetchall())
             except Exception as e:
                 error = str(e)
             finally:
@@ -178,26 +198,28 @@ class SuscriptoresScreen(Screen):
                 conn.close()
             Clock.schedule_once(
                 lambda *_: _aplicar(info, facturas, recaudos, recaudos_det,
-                                    pqr_list, error), 0)
+                                    pqr_list, huerfanos, error), 0)
 
-        def _aplicar(info, facturas, recaudos, recaudos_det, pqr_list, error):
+        def _aplicar(info, facturas, recaudos, recaudos_det, pqr_list, huerfanos, error):
             overlay.hide()
             if error:
                 self.mensaje = f'Error al cargar detalle: {error}'
                 return
-            self._popup_detalle(info, facturas, recaudos, recaudos_det, pqr_list)
+            self._popup_detalle(info, facturas, recaudos, recaudos_det, pqr_list, huerfanos)
 
         threading.Thread(target=_tarea, daemon=True).start()
 
-    def _popup_detalle(self, info, facturas, recaudos, recaudos_det, pqr_list):
+    def _popup_detalle(self, info, facturas, recaudos, recaudos_det, pqr_list, huerfanos=None):
         if not info:
             return
 
         cuenta, nombre, direccion, barrio, estrato, estado_sum, municipio, susccodi = info
 
-        total_facturado = sum(facturas.values())
-        total_pagado    = sum(recaudos.values())
-        deuda_total     = max(0, total_facturado - total_pagado)
+        huerfanos        = huerfanos or []
+        total_facturado  = sum(facturas.values())
+        huerfanos_total  = sum(float(r[2]) for r in huerfanos)
+        total_pagado     = sum(recaudos.values()) + huerfanos_total
+        deuda_total      = max(0, total_facturado - total_pagado)
 
         meses_sin_pagar = [
             (a, m) for (a, m), v in sorted(facturas.items())
@@ -375,15 +397,14 @@ class SuscriptoresScreen(Screen):
                     _sh = Rectangle(pos=sh.pos, size=sh.size)
                 sh.bind(pos=lambda _, v, r=_sh: setattr(r, 'pos', v),
                         size=lambda _, v, r=_sh: setattr(r, 'size', v))
-                for txt, sx in [('N° Factura', 0.28), ('Fecha pago', 0.22),
-                                 ('Concepto',   0.32), ('Valor',      0.18)]:
+                for txt, sx in [('N° Factura', 0.38), ('Fecha pago', 0.30), ('Valor', 0.32)]:
                     sh.add_widget(Label(
-                        text=txt, font_size=9, bold=True, color=MUTED,
+                        text=txt, font_size=11, bold=True, color=MUTED,
                         size_hint_x=sx, halign='left', valign='middle',
                     ))
                 sub.add_widget(sh)
 
-                for j, (nf, fecha_rec, val_rec, concepto) in enumerate(det_rows):
+                for j, (nf, fecha_rec, val_rec) in enumerate(det_rows):
                     sf_bg = CARD if j % 2 == 0 else (0.94, 0.91, 0.87, 1)
                     sf = BoxLayout(size_hint_y=None, height=SUB_ROW, padding=[32, 0, 8, 0])
                     with sf.canvas.before:
@@ -392,13 +413,15 @@ class SuscriptoresScreen(Screen):
                     sf.bind(pos=lambda _, v, r=_sf: setattr(r, 'pos', v),
                             size=lambda _, v, r=_sf: setattr(r, 'size', v))
                     nf_str    = str(nf) if nf else '—'
-                    fecha_str = str(fecha_rec)[:10] if fecha_rec else '—'
-                    conc_str  = (concepto[:24] + '…') if len(concepto) > 24 else concepto
+                    try:
+                        from datetime import datetime as _dt
+                        fecha_str = _dt.strptime(str(fecha_rec)[:10], '%Y-%m-%d').strftime('%d/%m/%y') if fecha_rec else '—'
+                    except Exception:
+                        fecha_str = str(fecha_rec)[:10] if fecha_rec else '—'
                     for txt, sx, col in [
-                        (nf_str,              0.28, TEXT_SEC),
-                        (fecha_str,           0.22, TINTA),
-                        (conc_str,            0.32, MUTED),
-                        (f'${val_rec:,.0f}',  0.18, SUCCESS),
+                        (nf_str,              0.38, TEXT_SEC),
+                        (fecha_str,           0.30, TINTA),
+                        (f'${val_rec:,.0f}',  0.32, SUCCESS),
                     ]:
                         lbl = Label(text=txt, font_size=10, color=col,
                                     size_hint_x=sx, halign='left', valign='middle')
@@ -432,6 +455,93 @@ class SuscriptoresScreen(Screen):
             btn_exp.bind(on_press=_toggle)
             tabla.add_widget(grupo)
 
+        # ── Pagos históricos sin período asignado (facturas no importadas) ──
+        if huerfanos:
+            hf_sub_h = SUB_HDR + len(huerfanos) * SUB_ROW
+            hf_grupo = BoxLayout(orientation='vertical', size_hint_y=None, height=ROW_H)
+
+            hf_fila = BoxLayout(size_hint_y=None, height=ROW_H)
+            with hf_fila.canvas.before:
+                Color(*STAGE)
+                _hf = Rectangle(pos=hf_fila.pos, size=hf_fila.size)
+            hf_fila.bind(pos=lambda _, v, r=_hf: setattr(r, 'pos', v),
+                         size=lambda _, v, r=_hf: setattr(r, 'size', v))
+            hf_total = sum(float(r[2]) for r in huerfanos)
+            for val, sx, col, al in [
+                ('—',                   0.10, MUTED,   'left'),
+                ('Sin período',         0.18, MUTED,   'left'),
+                ('—',                   0.22, MUTED,   'right'),
+                (f'${hf_total:,.0f}',   0.22, SUCCESS, 'right'),
+                ('Histórico',           0.18, MUTED,   'center'),
+            ]:
+                lbl = Label(text=val, color=col, font_size=12, size_hint_x=sx,
+                            halign=al, valign='middle')
+                lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
+                hf_fila.add_widget(lbl)
+            hf_btn = Button(text='▼', size_hint_x=0.10, font_size=10,
+                            background_normal='', background_color=(0, 0, 0, 0),
+                            color=MUTED)
+            hf_fila.add_widget(hf_btn)
+            hf_grupo.add_widget(hf_fila)
+
+            hf_sub = BoxLayout(orientation='vertical', size_hint_y=None, height=0, opacity=0)
+
+            hf_sh = BoxLayout(size_hint_y=None, height=SUB_HDR, padding=[32, 0, 8, 0])
+            with hf_sh.canvas.before:
+                Color(*STAGE)
+                _hsh = Rectangle(pos=hf_sh.pos, size=hf_sh.size)
+            hf_sh.bind(pos=lambda _, v, r=_hsh: setattr(r, 'pos', v),
+                       size=lambda _, v, r=_hsh: setattr(r, 'size', v))
+            for txt, sx in [('N° Factura', 0.38), ('Fecha pago', 0.30), ('Valor', 0.32)]:
+                hf_sh.add_widget(Label(text=txt, font_size=11, bold=True, color=MUTED,
+                                       size_hint_x=sx, halign='left', valign='middle'))
+            hf_sub.add_widget(hf_sh)
+
+            for j, (nf, fecha_rec, val_rec) in enumerate(huerfanos):
+                sf_bg = CARD if j % 2 == 0 else (0.94, 0.91, 0.87, 1)
+                sf = BoxLayout(size_hint_y=None, height=SUB_ROW, padding=[32, 0, 8, 0])
+                with sf.canvas.before:
+                    Color(*sf_bg)
+                    _sf = Rectangle(pos=sf.pos, size=sf.size)
+                sf.bind(pos=lambda _, v, r=_sf: setattr(r, 'pos', v),
+                        size=lambda _, v, r=_sf: setattr(r, 'size', v))
+                nf_str    = str(nf) if nf else '—'
+                fecha_str = str(fecha_rec)[:10] if fecha_rec else '—'
+                for txt, sx, col in [
+                    (nf_str,                    0.38, TEXT_SEC),
+                    (fecha_str,                 0.30, TINTA),
+                    (f'${float(val_rec):,.0f}', 0.32, SUCCESS),
+                ]:
+                    lbl = Label(text=txt, font_size=10, color=col,
+                                size_hint_x=sx, halign='left', valign='middle')
+                    lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-4, v[1])))
+                    sf.add_widget(lbl)
+                hf_sub.add_widget(sf)
+
+            hf_grupo.add_widget(hf_sub)
+
+            hf_div = BoxLayout(size_hint_y=None, height=1)
+            with hf_div.canvas.before:
+                Color(*LINE)
+                Rectangle(pos=hf_div.pos, size=hf_div.size)
+            hf_grupo.add_widget(hf_div)
+
+            def _hf_toggle(_, sub=hf_sub, grupo=hf_grupo, sub_h=hf_sub_h,
+                           btn=hf_btn, row_h=ROW_H):
+                if sub.height == 0:
+                    sub.height   = sub_h
+                    sub.opacity  = 1
+                    grupo.height = row_h + sub_h + 1
+                    btn.text = '▲'
+                else:
+                    sub.height   = 0
+                    sub.opacity  = 0
+                    grupo.height = row_h + 1
+                    btn.text = '▼'
+
+            hf_btn.bind(on_press=_hf_toggle)
+            tabla.add_widget(hf_grupo)
+
         scroll.add_widget(tabla)
         content.add_widget(scroll)
 
@@ -452,17 +562,9 @@ class SuscriptoresScreen(Screen):
         pie.add_widget(lbl_pdf)
 
         def _pill(text, bg, fg=(1, 1, 1, 1), w=115):
-            b = Button(
-                text=text, size_hint_x=None, width=w, font_size=12,
-                color=fg, background_color=(0, 0, 0, 0),
-                background_normal='', background_down='',
-            )
-            with b.canvas.before:
-                Color(*bg)
-                rr = RoundedRectangle(pos=b.pos, size=b.size, radius=[20])
-            b.bind(pos=lambda _, v, r=rr: setattr(r, 'pos', v),
-                   size=lambda _, v, r=rr: setattr(r, 'size', v))
-            return b
+            return PillButton(text=text, bg_color=bg, fg_color=fg,
+                              size_hint_x=None, width=w, font_size=12,
+                              pill_radius=20)
 
         btn_editar = _pill('Editar',      WARNING)
         btn_pdf    = _pill('Generar PDF', TINTA, w=130)
@@ -586,8 +688,8 @@ class SuscriptoresScreen(Screen):
                     lbl_pdf.text = f'Error: {exc}'
                     lbl_pdf.color = DANGER
 
-            btn_cancelar_rng = _pill('Cancelar',    LINE,  fg=TINTA, w=110)
-            btn_generar_rng  = _pill('Generar PDF', TINTA, w=130)
+            btn_cancelar_rng = PillButton(text='Cancelar',    bg_color=LINE, fg_color=TINTA, size_hint_x=None, width=110, font_size=12, pill_radius=20)
+            btn_generar_rng  = PillButton(text='Generar PDF', bg_color=TINTA,              size_hint_x=None, width=130, font_size=12, pill_radius=20)
             btn_cancelar_rng.bind(on_press=rng_popup.dismiss)
             btn_generar_rng.bind(on_press=_generar)
             pie_rng.add_widget(btn_cancelar_rng)
@@ -689,21 +791,8 @@ class SuscriptoresScreen(Screen):
         btns = BoxLayout(size_hint_y=None, height=44, spacing=12)
         lbl_ok = Label(text='', color=SUCCESS, font_size=12)
 
-        def _pill_f(text, bg, fg=(1, 1, 1, 1)):
-            b = Button(
-                text=text, font_size=12, color=fg,
-                background_color=(0, 0, 0, 0),
-                background_normal='', background_down='',
-            )
-            with b.canvas.before:
-                Color(*bg)
-                rr = RoundedRectangle(pos=b.pos, size=b.size, radius=[20])
-            b.bind(pos=lambda _, v, r=rr: setattr(r, 'pos', v),
-                   size=lambda _, v, r=rr: setattr(r, 'size', v))
-            return b
-
-        btn_guardar  = _pill_f('Guardar',  SUCCESS)
-        btn_cancelar = _pill_f('Cancelar', LINE, fg=TINTA)
+        btn_guardar  = PillButton(text='Guardar',  bg_color=SUCCESS, font_size=12, pill_radius=20)
+        btn_cancelar = PillButton(text='Cancelar', bg_color=LINE, fg_color=TINTA, font_size=12, pill_radius=20)
 
         btns.add_widget(lbl_ok)
         btns.add_widget(btn_guardar)
