@@ -5,9 +5,9 @@ from db.connection import get_connection
 _BATCH = 500
 
 # Columnas mínimas para identificar cada tipo de archivo
-_COLS_CATASTRO    = {'SUSCCODI', 'NOMBRE', 'ESTADO_SUMINISTRO'}
-_COLS_FACTURACION = {'NUMERO_FACTURA', 'SUSCCODI', 'VALOR_RECIBO'}
-_COLS_RECAUDO     = {'SUSCCODI', 'FECHA_RECAUDO', 'VALOR_RECIBO'}
+_COLS_CATASTRO    = {'CUENTA', 'NOMBRE', 'ESTADO_SUMINISTRO'}
+_COLS_FACTURACION = set()
+_COLS_RECAUDO     = {'FECHA_RECAUDO', 'VALOR_RECIBO'}
 
 
 def _verificar_columnas(cols, requeridas):
@@ -86,6 +86,42 @@ def _normalizar_mes(raw):
         return str(raw or '')
 
 
+def get_file_columns(filepath):
+    try:
+        df = _read_file(filepath)
+        return True, list(df.columns)
+    except Exception as e:
+        return False, str(e)
+
+
+def _extraer_estrato(subcategoria):
+    """
+    '1 - ESTRATO 1'               → '1'
+    '1 - COMERCIAL'               → 'COMERCIAL'
+    '3 - OFICIAL'                 → 'OFICIAL'
+    '5 - ALUMBRADO PÚBLICO'       → 'ALUMBRADO PÚBLICO'
+    '13 - OFICIAL EDUCACION'      → 'OFICIAL EDUCACION'
+    """
+    if not subcategoria:
+        return ''
+    partes = str(subcategoria).split(' - ', 1)
+    if len(partes) < 2:
+        return subcategoria.strip()
+    texto = partes[1].strip()
+    import re
+    if re.match(r'^ESTRATO\s+\d+$', texto, re.IGNORECASE):
+        return partes[0].strip()   # solo el número
+    return texto                   # nombre completo
+
+
+def _apply_col_map(df, col_map):
+    if not col_map:
+        return df
+    rename = {src: tgt for tgt, src in col_map.items()
+              if src and src in df.columns and src != tgt}
+    return df.rename(columns=rename)
+
+
 def _periodos_en_df(df):
     """Devuelve set de (año_int, mes_str) únicos presentes en un DataFrame."""
     periodos = set()
@@ -105,7 +141,7 @@ def _periodos_con_datos(cursor, tabla, periodos):
     resultado = []
     for año, mes in sorted(periodos):
         cursor.execute(
-            f"SELECT COUNT(*) FROM {tabla} WHERE año=%s AND mes=%s", (año, mes)
+            f"SELECT COUNT(*) FROM {tabla} WHERE anno=%s AND mes=%s", (año, mes)
         )
         count = cursor.fetchone()[0]
         if count > 0:
@@ -184,7 +220,7 @@ def importar_catastro(filepath):
 
         for _, row in df.iterrows():
             try:
-                susccodi = int(row.get('SUSCCODI', 0) or 0)
+                susccodi = int(row.get('CUENTA', 0) or 0)
                 if not susccodi:
                     omitidos += 1
                     continue
@@ -194,13 +230,13 @@ def importar_catastro(filepath):
                 )
                 all_rows.append((
                     susccodi,
-                    int(row.get('CUENTA', 0) or 0),
+                    int(row.get('SUSCCODI', 0) or 0),
                     str(row.get('NOMBRE', '') or ''),
                     str(row.get('DIRECCION', '') or ''),
                     str(row.get('MUNICIPIO', '') or ''),
                     str(row.get('BARRIO', '') or ''),
                     subcategoria,
-                    subcategoria.split('-')[0].strip(),
+                    _extraer_estrato(subcategoria),
                     str(row.get('ESTADO_SUMINISTRO', '') or ''),
                     str(row.get('TERRITORIAL', '') or ''),
                     str(row.get('DEPARTAMENTO', '') or ''),
@@ -257,15 +293,15 @@ def importar_catastro(filepath):
 _FAC_PREFIX = """
     INSERT IGNORE INTO facturas
     (numero_factura, susccodi, cuenta_contrato, fecha_facturacion,
-     subcategoria, estrato_contrato, codigo_concepto, concepto,
-     importe, valor_recibo, operacion, sector, municipio, año, mes)
+     valor_recibo, anno, mes)
     VALUES """
-_FAC_PH = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+_FAC_PH = "(%s,%s,%s,%s,%s,%s,%s)"
 
 
-def importar_facturacion(filepath, modo='nuevo'):
+def importar_facturacion(filepath, modo='nuevo', col_map=None):
     try:
         df = _read_file(filepath)
+        df = _apply_col_map(df, col_map)
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
@@ -285,7 +321,7 @@ def importar_facturacion(filepath, modo='nuevo'):
         if modo == 'reemplazar':
             for año, mes in _periodos_en_df(df):
                 cursor.execute(
-                    "DELETE FROM facturas WHERE año=%s AND mes=%s", (año, mes)
+                    "DELETE FROM facturas WHERE anno=%s AND mes=%s", (año, mes)
                 )
             conn.commit()
 
@@ -300,8 +336,10 @@ def importar_facturacion(filepath, modo='nuevo'):
                 numero_factura = int(
                     float(str(nf_raw).replace('E', 'e'))
                 )
-                # SUSCCODI puede estar ausente; se usa 0 como fallback
-                susccodi = int(_parse_float(row.get('SUSCCODI', 0) or 0))
+                # NIC: CUENTA_CONTRATO o CUENTA según formato del archivo
+                susccodi = int(_parse_float(
+                    row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0
+                ))
                 if not numero_factura or numero_factura in vistos:
                     omitidos += 1
                     continue
@@ -309,19 +347,12 @@ def importar_facturacion(filepath, modo='nuevo'):
 
                 fecha_str = str(row.get('FECHA_FACTURACION', ''))
                 try:
-                    fecha = pd.to_datetime(fecha_str).date()
+                    fecha = pd.to_datetime(fecha_str, dayfirst=True).date()
                 except Exception:
                     fecha = None
 
-                # CUENTA_CONTRATO puede llamarse CUENTA en algunos formatos
-                cuenta_contrato = int(_parse_float(
-                    row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0
-                ))
-                subcategoria = str(
-                    row.get('SUBCATEGORIA') or row.get('CATEGORIA') or ''
-                )
-                estrato = str(row.get('ESTRATO_CONTRATO', '') or
-                              subcategoria.split('-')[0].strip())
+                # SUSCCODI de INGESAM va como cuenta_contrato
+                cuenta_contrato = int(_parse_float(row.get('SUSCCODI', 0) or 0))
                 # VALOR_RECIBO puede llamarse VALOR_FACTURADO_TERCEROS
                 valor_recibo = _parse_float(
                     row.get('VALOR_RECIBO') if row.get('VALOR_RECIBO') is not None
@@ -333,15 +364,7 @@ def importar_facturacion(filepath, modo='nuevo'):
                     susccodi,
                     cuenta_contrato,
                     fecha,
-                    subcategoria,
-                    estrato,
-                    str(row.get('CODIGO_CONCEPTO', '') or ''),
-                    str(row.get('CONCEPTO', '') or ''),
-                    _parse_float(row.get('IMPORTE', 0)),
                     valor_recibo,
-                    str(row.get('OPERACIÓN', '') or row.get('OPERACION', '') or ''),
-                    str(row.get('SECTOR', '') or ''),
-                    str(row.get('MUNICIPIO', '') or ''),
                     _get_ano(row),
                     _get_mes(row),
                 ))
@@ -372,16 +395,16 @@ def importar_facturacion(filepath, modo='nuevo'):
 # ─────────────────────────────────────────────────────────────────────────────
 _REC_PREFIX = """
     INSERT INTO recaudos
-    (susccodi, cuenta_contrato, numero_factura, fecha_facturacion,
-     fecha_recaudo, subcategoria, estrato_contrato, codigo_concepto,
-     concepto, importe, valor_recibo, sector, municipio, año, mes)
+    (numero_factura, susccodi, cuenta_contrato, fecha_facturacion,
+     fecha_recaudo, valor_recibo, anno, mes)
     VALUES """
-_REC_PH = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+_REC_PH = "(%s,%s,%s,%s,%s,%s,%s,%s)"
 
 
-def importar_recaudo(filepath, modo='nuevo'):
+def importar_recaudo(filepath, modo='nuevo', col_map=None):
     try:
         df = _read_file(filepath)
+        df = _apply_col_map(df, col_map)
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
@@ -401,7 +424,7 @@ def importar_recaudo(filepath, modo='nuevo'):
         # Permite registrar cada recaudo en el período de su factura original,
         # no en el mes del archivo de recaudo.
         cursor.execute(
-            "SELECT numero_factura, año, mes FROM facturas WHERE numero_factura IS NOT NULL"
+            "SELECT numero_factura, anno, mes FROM facturas WHERE numero_factura IS NOT NULL"
         )
         factura_map = {row[0]: (str(row[1]), str(row[2])) for row in cursor.fetchall()}
 
@@ -427,22 +450,21 @@ def importar_recaudo(filepath, modo='nuevo'):
         omitidos    = 0
         sin_factura = 0   # facturas del archivo que aún no están en DB
 
-        def s(val, maxlen=100):
-            return str(val or '')[:maxlen]
-
         for _, row in df.iterrows():
             try:
-                susccodi = int(float(str(row.get('SUSCCODI', 0))))
+                susccodi = int(float(str(
+                    row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0
+                )))
                 if not susccodi:
                     omitidos += 1
                     continue
 
                 try:
-                    fecha_fac = pd.to_datetime(str(row.get('FECHA_FACTURACION', ''))).date()
+                    fecha_fac = pd.to_datetime(str(row.get('FECHA_FACTURACION', '')), dayfirst=True).date()
                 except Exception:
                     fecha_fac = None
                 try:
-                    fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', ''))).date()
+                    fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', '')), dayfirst=True).date()
                 except Exception:
                     fecha_rec = None
 
@@ -463,19 +485,12 @@ def importar_recaudo(filepath, modo='nuevo'):
                         sin_factura += 1
 
                 para_insertar.append((
-                    susccodi,
-                    int(float(str(row.get('CUENTA_CONTRATO', 0) or 0))),
                     numero_factura,
+                    susccodi,
+                    int(float(str(row.get('SUSCCODI', 0) or 0))),
                     fecha_fac,
                     fecha_rec,
-                    s(row.get('SUBCATEGORIA')),
-                    s(row.get('ESTRATO_CONTRATO'), 20),
-                    s(row.get('CODIGO_CONCEPTO'), 20),
-                    s(row.get('CONCEPTO'), 200),
-                    float(row.get('IMPORTE', 0) or 0),
                     float(row.get('VALOR_RECIBO', 0) or 0),
-                    s(row.get('SECTOR'), 50),
-                    s(row.get('MUNICIPIO'), 100),
                     año_rec,
                     mes_rec,
                 ))
@@ -543,7 +558,7 @@ def previsualizar_catastro(filepath):
 
     for _, row in df.iterrows():
         try:
-            susccodi = int(row.get('SUSCCODI', 0) or 0)
+            susccodi = int(row.get('CUENTA', 0) or 0)
             if not susccodi:
                 omitidos += 1
                 continue
@@ -589,9 +604,10 @@ def _sort_periodo(p):
         return (0, 0)
 
 
-def previsualizar_facturacion(filepath):
+def previsualizar_facturacion(filepath, col_map=None):
     try:
         df = _read_file(filepath)
+        df = _apply_col_map(df, col_map)
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
@@ -629,8 +645,8 @@ def previsualizar_facturacion(filepath):
 
     for _, row in df.iterrows():
         try:
-            nf   = int(float(str(row.get('NUMERO_FACTURA', 0)).replace('E', 'e')))
-            susc = int(float(str(row.get('SUSCCODI', 0))))
+            nf   = int(float(str(row.get('NUMERO_FACTURA') or row.get('FACTURA') or 0).replace('E', 'e')))
+            susc = int(float(str(row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0)))
             if not nf or not susc:
                 omitidas += 1
                 continue
@@ -662,9 +678,10 @@ def previsualizar_facturacion(filepath):
     }
 
 
-def previsualizar_recaudo(filepath):
+def previsualizar_recaudo(filepath, col_map=None):
     try:
         df = _read_file(filepath)
+        df = _apply_col_map(df, col_map)
     except Exception as e:
         return False, f"Error al leer archivo: {e}"
 
@@ -686,7 +703,7 @@ def previsualizar_recaudo(filepath):
     periodos_existentes = []
     try:
         cursor.execute(
-            "SELECT numero_factura, año, mes FROM facturas WHERE numero_factura IS NOT NULL"
+            "SELECT numero_factura, anno, mes FROM facturas WHERE numero_factura IS NOT NULL"
         )
         factura_map = {row[0]: (str(row[1]), str(row[2])) for row in cursor.fetchall()}
 
@@ -714,14 +731,16 @@ def previsualizar_recaudo(filepath):
 
     for _, row in df.iterrows():
         try:
-            susccodi = int(float(str(row.get('SUSCCODI', 0))))
+            susccodi = int(float(str(
+                row.get('CUENTA_CONTRATO') or row.get('CUENTA') or 0
+            )))
             if not susccodi:
                 omitidas += 1
                 continue
             total += 1
 
             try:
-                fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', ''))).date()
+                fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', '')), dayfirst=True).date()
             except Exception:
                 fecha_rec = None
 
