@@ -118,7 +118,7 @@ class SuscriptoresScreen(Screen):
             (str(estado or '-'),    0.12),
         ]
         for texto, sx in datos:
-            lbl = Label(text=texto, size_hint_x=sx, font_size=13,
+            lbl = Label(text=texto, size_hint_x=sx, font_size=13, bold=True,
                         color=TINTA, halign='left', valign='middle')
             lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0] - 4, v[1])))
             fila.add_widget(lbl)
@@ -147,17 +147,17 @@ class SuscriptoresScreen(Screen):
                 cursor.execute("""
                     SELECT cuenta, nombre, direccion, barrio, estrato,
                            estado_suministro, municipio, susccodi
-                    FROM suscriptores WHERE cuenta = %s LIMIT 1
-                """, (cuenta,))
+                    FROM suscriptores WHERE cuenta = %s OR susccodi = %s LIMIT 1
+                """, (cuenta, cuenta))
                 info = cursor.fetchone()
+                # susccodi = código interno que enlaza con facturas.cuenta_contrato
+                _interno = info[7] if info else cuenta
                 cursor.execute("""
                     SELECT anno, mes, SUM(valor_recibo)
                     FROM facturas WHERE cuenta_contrato = %s
                     GROUP BY anno, mes ORDER BY anno, mes
-                """, (cuenta,))
+                """, (_interno,))
                 facturas = {(int(r[0]), int(r[1])): float(r[2]) for r in cursor.fetchall()}
-                # JOIN por numero_factura: el período viene de la factura,
-                # no del año/mes almacenado en recaudos (puede ser fallback incorrecto)
                 cursor.execute("""
                     SELECT f.anno, f.mes,
                            r.numero_factura, r.fecha_recaudo,
@@ -166,7 +166,7 @@ class SuscriptoresScreen(Screen):
                     INNER JOIN facturas f ON f.numero_factura = r.numero_factura
                     WHERE r.cuenta_contrato = %s
                     ORDER BY f.anno, f.mes, r.fecha_recaudo
-                """, (cuenta,))
+                """, (_interno,))
                 for r in cursor.fetchall():
                     key = (int(r[0]), int(r[1]))
                     recaudos[key] = recaudos.get(key, 0) + float(r[4])
@@ -177,7 +177,7 @@ class SuscriptoresScreen(Screen):
                     SELECT id, tipo, asunto, estado, fecha_creacion
                     FROM pqr WHERE cuenta_contrato = %s
                     ORDER BY fecha_creacion DESC
-                """, (cuenta,))
+                """, (_interno,))
                 pqr_list = cursor.fetchall()
                 cursor.execute("""
                     SELECT r.numero_factura, r.fecha_recaudo,
@@ -189,7 +189,7 @@ class SuscriptoresScreen(Screen):
                           WHERE f.numero_factura = r.numero_factura
                       )
                     ORDER BY r.fecha_recaudo
-                """, (cuenta,))
+                """, (_interno,))
                 huerfanos = list(cursor.fetchall())
             except Exception as e:
                 error = str(e)
@@ -272,7 +272,7 @@ class SuscriptoresScreen(Screen):
             _chip = RoundedRectangle(pos=chip.pos, size=chip.size, radius=[13])
         chip.bind(pos=lambda _, v, r=_chip: setattr(r, 'pos', v),
                   size=lambda _, v, r=_chip: setattr(r, 'size', v))
-        chip.add_widget(Label(text=texto_estado, color=(1, 1, 1, 1), bold=True, font_size=11))
+        chip.add_widget(Label(text=texto_estado, color=(1, 1, 1, 1), bold=True, font_size=13))
         chip_wrap.add_widget(chip)
         name_row.add_widget(chip_wrap)
         top.add_widget(name_row)
@@ -280,9 +280,9 @@ class SuscriptoresScreen(Screen):
         meta_parts = [f'#{cuenta}', barrio or '—',
                       f'Estrato {estrato or "—"}', estado_sum or '—']
         top.add_widget(Label(
-            text='  ·  '.join(meta_parts), font_size=11,
+            text='  ·  '.join(meta_parts), font_size=13,
             color=LINE, halign='left', valign='middle',
-            size_hint_y=None, height=26,
+            size_hint_y=None, height=28,
         ))
         content.add_widget(top)
 
@@ -300,12 +300,12 @@ class SuscriptoresScreen(Screen):
             f.bind(pos=lambda _, v, r=_fr: setattr(r, 'pos', v),
                    size=lambda _, v, r=_fr: setattr(r, 'size', v))
             f.add_widget(Label(text=val_t, font_size=17, bold=True, color=col))
-            f.add_widget(Label(text=lbl_t, font_size=10, color=MUTED))
+            f.add_widget(Label(text=lbl_t, font_size=12, color=MUTED))
             fichas.add_widget(f)
         content.add_widget(fichas)
 
         # ── Encabezado tabla ──
-        hdr = BoxLayout(size_hint_y=None, height=30, spacing=2)
+        hdr = BoxLayout(size_hint_y=None, height=40, spacing=2)
         with hdr.canvas.before:
             Color(*TINTA)
             _hdr = Rectangle(pos=hdr.pos, size=hdr.size)
@@ -320,7 +320,7 @@ class SuscriptoresScreen(Screen):
             ('',          0.10, 'left'),
         ]:
             lbl_h = Label(text=txt, bold=True, size_hint_x=sx,
-                          font_size=10, color=LINE, halign=al, valign='middle')
+                          font_size=12, color=LINE, halign=al, valign='middle')
             lbl_h.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
             hdr.add_widget(lbl_h)
         content.add_widget(hdr)
@@ -330,9 +330,9 @@ class SuscriptoresScreen(Screen):
         tabla  = BoxLayout(orientation='vertical', size_hint_y=None, spacing=0)
         tabla.bind(minimum_height=tabla.setter('height'))
 
-        ROW_H   = 36   # altura fila principal
-        SUB_HDR = 24   # encabezado sub-panel
-        SUB_ROW = 26   # fila de recaudo individual
+        ROW_H   = 38   # altura fila principal
+        SUB_HDR = 30   # encabezado sub-panel
+        SUB_ROW = 30   # fila de recaudo individual
 
         all_months = sorted(set(list(facturas.keys()) + list(recaudos.keys())))
         for i, (a, m) in enumerate(all_months):
@@ -370,7 +370,7 @@ class SuscriptoresScreen(Screen):
                 (f'${rec_val:,.0f}',        0.22, SUCCESS if rec_val > 0 else MUTED,  'right'),
                 (est_txt,                   0.18, est_col,                             'center'),
             ]:
-                lbl = Label(text=val, color=col, font_size=12, size_hint_x=sx,
+                lbl = Label(text=val, color=col, font_size=13, bold=True, size_hint_x=sx,
                             halign=al, valign='middle')
                 lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
                 fila.add_widget(lbl)
@@ -378,7 +378,7 @@ class SuscriptoresScreen(Screen):
             # Botón expandir / colapsar (sólo si hay desglose)
             btn_exp = Button(
                 text='▼' if tiene_det else '',
-                size_hint_x=0.10, font_size=10,
+                size_hint_x=0.10, font_size=14,
                 background_normal='', background_color=(0, 0, 0, 0),
                 color=MUTED, disabled=not tiene_det,
             )
@@ -399,7 +399,7 @@ class SuscriptoresScreen(Screen):
                         size=lambda _, v, r=_sh: setattr(r, 'size', v))
                 for txt, sx in [('N° Factura', 0.38), ('Fecha pago', 0.30), ('Valor', 0.32)]:
                     sh.add_widget(Label(
-                        text=txt, font_size=11, bold=True, color=MUTED,
+                        text=txt, font_size=12, bold=True, color=MUTED,
                         size_hint_x=sx, halign='left', valign='middle',
                     ))
                 sub.add_widget(sh)
@@ -423,7 +423,7 @@ class SuscriptoresScreen(Screen):
                         (fecha_str,           0.30, TINTA),
                         (f'${val_rec:,.0f}',  0.32, SUCCESS),
                     ]:
-                        lbl = Label(text=txt, font_size=10, color=col,
+                        lbl = Label(text=txt, font_size=12, color=col,
                                     size_hint_x=sx, halign='left', valign='middle')
                         lbl.bind(size=lambda inst, v: setattr(inst, 'text_size',
                                                                (v[0]-4, v[1])))
@@ -474,11 +474,11 @@ class SuscriptoresScreen(Screen):
                 (f'${hf_total:,.0f}',   0.22, SUCCESS, 'right'),
                 ('Histórico',           0.18, MUTED,   'center'),
             ]:
-                lbl = Label(text=val, color=col, font_size=12, size_hint_x=sx,
+                lbl = Label(text=val, color=col, font_size=13, bold=True, size_hint_x=sx,
                             halign=al, valign='middle')
                 lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-6, v[1])))
                 hf_fila.add_widget(lbl)
-            hf_btn = Button(text='▼', size_hint_x=0.10, font_size=10,
+            hf_btn = Button(text='▼', size_hint_x=0.10, font_size=14,
                             background_normal='', background_color=(0, 0, 0, 0),
                             color=MUTED)
             hf_fila.add_widget(hf_btn)
@@ -493,7 +493,7 @@ class SuscriptoresScreen(Screen):
             hf_sh.bind(pos=lambda _, v, r=_hsh: setattr(r, 'pos', v),
                        size=lambda _, v, r=_hsh: setattr(r, 'size', v))
             for txt, sx in [('N° Factura', 0.38), ('Fecha pago', 0.30), ('Valor', 0.32)]:
-                hf_sh.add_widget(Label(text=txt, font_size=11, bold=True, color=MUTED,
+                hf_sh.add_widget(Label(text=txt, font_size=12, bold=True, color=MUTED,
                                        size_hint_x=sx, halign='left', valign='middle'))
             hf_sub.add_widget(hf_sh)
 
@@ -512,7 +512,7 @@ class SuscriptoresScreen(Screen):
                     (fecha_str,                 0.30, TINTA),
                     (f'${float(val_rec):,.0f}', 0.32, SUCCESS),
                 ]:
-                    lbl = Label(text=txt, font_size=10, color=col,
+                    lbl = Label(text=txt, font_size=12, color=col,
                                 size_hint_x=sx, halign='left', valign='middle')
                     lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0]-4, v[1])))
                     sf.add_widget(lbl)
@@ -555,15 +555,15 @@ class SuscriptoresScreen(Screen):
 
         pie.add_widget(Label(
             text=f'{consecutivos} mes(es) consecutivo(s) sin pagar',
-            font_size=11, color=MUTED, halign='left',
+            font_size=13, color=MUTED, halign='left',
         ))
-        lbl_pdf = Label(text='', font_size=11, color=SUCCESS,
+        lbl_pdf = Label(text='', font_size=13, color=SUCCESS,
                         size_hint_x=None, width=180)
         pie.add_widget(lbl_pdf)
 
         def _pill(text, bg, fg=(1, 1, 1, 1), w=115):
             return PillButton(text=text, bg_color=bg, fg_color=fg,
-                              size_hint_x=None, width=w, font_size=12,
+                              size_hint_x=None, width=w, font_size=13,
                               pill_radius=20)
 
         btn_editar = _pill('Editar',      WARNING)
@@ -576,12 +576,11 @@ class SuscriptoresScreen(Screen):
         content.add_widget(pie)
 
         popup = Popup(
-            title=f'Suscriptor — {nombre}',
+            title='',
+            separator_height=0,
             content=content,
             size_hint=(0.82, 0.88),
-            background_color=VERMILLON,
-            title_color=(1, 1, 1, 1),
-            separator_color=LINE,
+            background_color=CARD,
         )
 
         def _abrir_selector_rango(_):
@@ -715,6 +714,13 @@ class SuscriptoresScreen(Screen):
         es_edicion = cuenta_editar is not None
         datos_actuales = {}
 
+        _USO_OPTS = [
+            'Residencial 1 Ocupado', 'Residencial 1 Desocupado',
+            'Residencial 2 Ocupado', 'Residencial 2 Desocupado',
+            'Residencial 3 Ocupado', 'Residencial 3 Desocupado',
+            'Comercial 0 Ocupado',   'Comercial 0 Desocupado',
+        ]
+
         if es_edicion:
             conn = get_connection()
             if not conn:
@@ -723,66 +729,134 @@ class SuscriptoresScreen(Screen):
             try:
                 cur.execute("""
                     SELECT cuenta, susccodi, nombre, direccion, municipio,
-                           barrio, subcategoria, estrato, estado_suministro
+                           barrio, subcategoria, estrato, estado_suministro,
+                           uso_volcado, lote
                     FROM suscriptores WHERE cuenta = %s LIMIT 1
                 """, (cuenta_editar,))
                 row = cur.fetchone()
                 if row:
                     keys = ['cuenta', 'susccodi', 'nombre', 'direccion',
                             'municipio', 'barrio', 'subcategoria',
-                            'estrato', 'estado_suministro']
+                            'estrato', 'estado_suministro',
+                            'uso_volcado', 'lote']
                     datos_actuales = {k: (str(v) if v is not None else '')
                                       for k, v in zip(keys, row)}
             finally:
                 cur.close()
                 conn.close()
 
-        content = BoxLayout(orientation='vertical', spacing=10, padding=15)
+        content = BoxLayout(orientation='vertical', spacing=0)
         with content.canvas.before:
             Color(*CARD)
             _cbg = Rectangle(pos=content.pos, size=content.size)
         content.bind(pos=lambda _, v: setattr(_cbg, 'pos', v),
                      size=lambda _, v: setattr(_cbg, 'size', v))
 
-        form = GridLayout(cols=2, size_hint_y=None, spacing=8, padding=[0, 4])
-        form.bind(minimum_height=form.setter('height'))
+        # ── Header del popup ──
+        hdr = BoxLayout(size_hint_y=None, height=52, padding=[16, 0])
+        with hdr.canvas.before:
+            Color(*TINTA)
+            _rh = Rectangle(pos=hdr.pos, size=hdr.size)
+        hdr.bind(pos=lambda _, v: setattr(_rh, 'pos', v),
+                 size=lambda _, v: setattr(_rh, 'size', v))
+        titulo_txt = f'Editar — Cuenta {cuenta_editar}' if es_edicion else 'Nuevo Suscriptor'
+        hdr.add_widget(Label(text=titulo_txt, bold=True, font_size=14,
+                             color=(1, 1, 1, 1), halign='left', valign='middle',
+                             text_size=(600, 52)))
+        content.add_widget(hdr)
 
-        campos = [
-            ('Cuenta *',          'cuenta',           not es_edicion),
-            ('SUSCCODI',          'susccodi',          not es_edicion),
-            ('Nombre *',          'nombre',            True),
-            ('Dirección',         'direccion',         True),
-            ('Municipio',         'municipio',         True),
-            ('Barrio',            'barrio',            True),
-            ('Subcategoría',      'subcategoria',      True),
-            ('Estrato',           'estrato',           True),
-            ('Estado suministro', 'estado_suministro', True),
-        ]
+        form_outer = BoxLayout(orientation='vertical', size_hint_y=None, spacing=0)
+        form_outer.bind(minimum_height=form_outer.setter('height'))
+
+        def _section_header(texto, color):
+            sh = BoxLayout(size_hint_y=None, height=30, padding=[12, 0])
+            with sh.canvas.before:
+                Color(*color)
+                r = Rectangle(pos=sh.pos, size=sh.size)
+            sh.bind(pos=lambda _, v, rr=r: setattr(rr, 'pos', v),
+                    size=lambda _, v, rr=r: setattr(rr, 'size', v))
+            sh.add_widget(Label(text=texto, bold=True, font_size=10,
+                                color=(1, 1, 1, 1), halign='left', valign='middle',
+                                text_size=(600, 30)))
+            return sh
+
+        def _campo_row(label_txt, key, editable, options=None):
+            row = BoxLayout(size_hint_y=None, height=40, spacing=8, padding=[12, 2])
+            lbl = Label(text=label_txt, color=MUTED, font_size=11,
+                        size_hint_x=0.30, halign='right', valign='middle')
+            lbl.bind(size=lambda w, _: setattr(w, 'text_size', (w.width, w.height)))
+            row.add_widget(lbl)
+            if options is not None:
+                current = datos_actuales.get(key, '') or options[0]
+                if current not in options:
+                    current = options[0]
+                widget = Spinner(text=current, values=options,
+                                 font_name='Jakarta', font_size=12,
+                                 size_hint_y=None, height=34,
+                                 background_normal='', background_color=CARD,
+                                 color=TINTA, disabled=not editable)
+            else:
+                widget = TextInput(
+                    text=datos_actuales.get(key, ''), multiline=False,
+                    size_hint_y=None, height=34,
+                    readonly=not editable,
+                    background_color=STAGE if not editable else CARD,
+                    foreground_color=MUTED if not editable else TINTA,
+                    cursor_color=VERMILLON, padding=[8, 8])
+            row.add_widget(widget)
+            return row, widget
 
         inputs = {}
-        for label_txt, key, editable in campos:
-            lbl = Label(
-                text=label_txt, color=VERMILLON,
-                bold=True, halign='right', size_hint_y=None, height=38,
-            )
-            lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0], v[1])))
-            form.add_widget(lbl)
 
-            inp = TextInput(
-                text=datos_actuales.get(key, ''),
-                multiline=False,
-                size_hint_y=None, height=38,
-                readonly=not editable,
-                background_color=STAGE if not editable else CARD,
-                foreground_color=MUTED  if not editable else TINTA,
-                cursor_color=VERMILLON,
-                padding=[8, 10],
-            )
-            form.add_widget(inp)
-            inputs[key] = inp
+        # ── Sección 1: Identificación ──
+        if not es_edicion:
+            form_outer.add_widget(_section_header('  IDENTIFICACIÓN', TINTA))
+            for label_txt, key in [('Cuenta *', 'cuenta'), ('SUSCCODI', 'susccodi')]:
+                r, w = _campo_row(label_txt, key, True)
+                form_outer.add_widget(r)
+                inputs[key] = w
+        else:
+            # En edición mostrar cuenta como info (no editable) — susccodi oculto
+            info_row = BoxLayout(size_hint_y=None, height=34, padding=[12, 4])
+            info_row.add_widget(Label(
+                text=f'Cuenta: {cuenta_editar}  ·  SUSCCODI: {datos_actuales.get("susccodi", "—")}',
+                font_size=11, color=MUTED, halign='left', valign='middle'))
+            form_outer.add_widget(info_row)
+
+        # ── Sección 2: Datos de contacto ──
+        form_outer.add_widget(_section_header('  DATOS DE CONTACTO', VERMILLON))
+        for label_txt, key in [
+            ('Nombre *',  'nombre'),
+            ('Dirección', 'direccion'),
+            ('Municipio', 'municipio'),
+            ('Barrio',    'barrio'),
+        ]:
+            r, w = _campo_row(label_txt, key, True)
+            form_outer.add_widget(r)
+            inputs[key] = w
+
+        # ── Sección 3: Datos catastro / volcado ──
+        form_outer.add_widget(_section_header(
+            '  DATOS CATASTRO  (se actualizan automáticamente al importar el catastro mensual)',
+            (0.40, 0.35, 0.30, 1)
+        ))
+        ESTADOS_SUMINISTRO = [
+            'ACTIVO', 'SUSPENDIDO MORA', 'SUSPENDIDO FRAUDE',
+            'CORTADO', 'RETIRADO', 'INACTIVO',
+        ]
+        for label_txt, key, opts in [
+            ('Subcategoría',      'subcategoria',      None),
+            ('Estrato',           'estrato',           ['1', '2', '3', 'COMERCIAL']),
+            ('Estado suministro', 'estado_suministro', ESTADOS_SUMINISTRO),
+            ('Uso volcado',       'uso_volcado',       [''] + _USO_OPTS),
+            ('Lote',              'lote',              ['principal', 'hoja1']),
+        ]:
+            r, w = _campo_row(label_txt, key, True, opts)
+            form_outer.add_widget(r)
+            inputs[key] = w
 
         scroll = ScrollView(size_hint_y=1)
-        scroll.add_widget(form)
+        scroll.add_widget(form_outer)
         content.add_widget(scroll)
 
         lbl_err = Label(text='', color=DANGER, size_hint_y=None, height=26)
@@ -801,10 +875,17 @@ class SuscriptoresScreen(Screen):
 
         titulo = f'Editar Suscriptor — {cuenta_editar}' if es_edicion else 'Nuevo Suscriptor'
         popup = Popup(
-            title=titulo, content=content, size_hint=(0.55, 0.82),
+            title=titulo, content=content, size_hint=(0.55, 0.88),
             background_color=VERMILLON, title_color=(1, 1, 1, 1),
             separator_color=LINE,
         )
+
+        def _val(key):
+            w = inputs[key]
+            if isinstance(w, Spinner):
+                v = w.text.strip()
+                return v if v else None
+            return w.text.strip() or None
 
         def guardar(_):
             nombre_val = inputs['nombre'].text.strip()
@@ -822,16 +903,19 @@ class SuscriptoresScreen(Screen):
                     cur.execute("""
                         UPDATE suscriptores
                         SET nombre=%s, direccion=%s, municipio=%s, barrio=%s,
-                            subcategoria=%s, estrato=%s, estado_suministro=%s
+                            subcategoria=%s, estrato=%s, estado_suministro=%s,
+                            uso_volcado=%s, lote=%s
                         WHERE cuenta=%s
                     """, (
                         nombre_val,
-                        inputs['direccion'].text.strip() or None,
-                        inputs['municipio'].text.strip() or None,
-                        inputs['barrio'].text.strip() or None,
-                        inputs['subcategoria'].text.strip() or None,
-                        inputs['estrato'].text.strip() or None,
-                        inputs['estado_suministro'].text.strip() or None,
+                        _val('direccion'),
+                        _val('municipio'),
+                        _val('barrio'),
+                        _val('subcategoria'),
+                        _val('estrato'),
+                        _val('estado_suministro'),
+                        _val('uso_volcado'),
+                        _val('lote') or 'principal',
                         cuenta_editar,
                     ))
                 else:
@@ -844,18 +928,21 @@ class SuscriptoresScreen(Screen):
                     cur.execute("""
                         INSERT INTO suscriptores
                         (cuenta, susccodi, nombre, direccion, municipio,
-                         barrio, subcategoria, estrato, estado_suministro)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         barrio, subcategoria, estrato, estado_suministro,
+                         uso_volcado, lote)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         int(cuenta_val),
                         int(susccodi_val) if susccodi_val else None,
                         nombre_val,
-                        inputs['direccion'].text.strip() or None,
-                        inputs['municipio'].text.strip() or None,
-                        inputs['barrio'].text.strip() or None,
-                        inputs['subcategoria'].text.strip() or None,
-                        inputs['estrato'].text.strip() or None,
-                        inputs['estado_suministro'].text.strip() or None,
+                        _val('direccion'),
+                        _val('municipio'),
+                        _val('barrio'),
+                        _val('subcategoria'),
+                        _val('estrato'),
+                        _val('estado_suministro'),
+                        _val('uso_volcado'),
+                        _val('lote') or 'principal',
                     ))
                 conn.commit()
                 lbl_ok.text = 'Guardado correctamente'
@@ -904,163 +991,191 @@ class SuscriptoresScreen(Screen):
 
     def _popup_config_excel(self, estratos, barrios):
         overlay.hide()
-        from kivy.uix.togglebutton import ToggleButton
 
+        _agrup   = {'v': 'estrato'}
+        est_sel  = {e: True for e in estratos}
+        bar_sel  = {b: True for b in barrios}
+        est_pills = {}
+        bar_pills = {}
+
+        # ── Helpers de color para pills ──
+        def _activar(pill):
+            pill.bg_color = list(TINTA)
+            pill.fg_color = [1, 1, 1, 1]
+
+        def _desactivar(pill):
+            pill.bg_color = list(LINE)
+            pill.fg_color = list(TINTA)
+
+        # ── Contenedor principal ──
         content = BoxLayout(orientation='vertical', spacing=0)
         with content.canvas.before:
             Color(*CARD)
-            r = Rectangle(pos=content.pos, size=content.size)
-        content.bind(pos=lambda _, v: setattr(r, 'pos', v))
-        content.bind(size=lambda _, v: setattr(r, 'size', v))
+            _cbg = Rectangle(pos=content.pos, size=content.size)
+        content.bind(pos=lambda _, v: setattr(_cbg, 'pos', v),
+                     size=lambda _, v: setattr(_cbg, 'size', v))
 
-        # Cabecera
-        hdr = BoxLayout(size_hint_y=None, height=52, padding=[16, 0])
+        # Header
+        hdr = BoxLayout(size_hint_y=None, height=52, padding=[20, 0])
         with hdr.canvas.before:
             Color(*TINTA)
-            rh = Rectangle(pos=hdr.pos, size=hdr.size)
-        hdr.bind(pos=lambda _, v: setattr(rh, 'pos', v))
-        hdr.bind(size=lambda _, v: setattr(rh, 'size', v))
+            _rh = Rectangle(pos=hdr.pos, size=hdr.size)
+        hdr.bind(pos=lambda _, v: setattr(_rh, 'pos', v),
+                 size=lambda _, v: setattr(_rh, 'size', v))
         hdr.add_widget(Label(text='Configurar exportación Excel', bold=True,
-                             font_size=14, color=(1, 1, 1, 1),
-                             halign='left', valign='middle', text_size=(500, 52)))
+                             font_size=15, color=(1, 1, 1, 1),
+                             halign='center', valign='middle', text_size=(660, 52)))
         content.add_widget(hdr)
 
-        body = BoxLayout(orientation='vertical', padding=[16, 12], spacing=10)
+        body = BoxLayout(orientation='vertical', padding=[20, 14], spacing=12)
         content.add_widget(body)
 
-        # ── Agrupación ────────────────────────────────────────────
-        body.add_widget(Label(text='Agrupar por:', font_size=11, color=MUTED,
-                              size_hint_y=None, height=18,
-                              halign='left', text_size=(540, 18)))
-        grp_row = BoxLayout(size_hint_y=None, height=36, spacing=8)
-        btn_est = ToggleButton(text='Estrato', group='agrup', state='down',
-                               size_hint_x=None, width=100, font_size=12,
-                               background_normal='', background_down='',
-                               background_color=TINTA, color=(1, 1, 1, 1))
-        btn_bar = ToggleButton(text='Barrio', group='agrup', state='normal',
-                               size_hint_x=None, width=100, font_size=12,
-                               background_normal='', background_down='',
-                               background_color=STAGE, color=TINTA)
+        def _sec_lbl(txt):
+            l = Label(text=txt, font_size=11, bold=True, color=MUTED,
+                      size_hint_y=None, height=20, halign='left')
+            l.bind(size=lambda w, _: setattr(w, 'text_size', (w.width, w.height)))
+            return l
 
-        def _sync_colores(*_):
-            btn_est.background_color = TINTA if btn_est.state == 'down' else STAGE
-            btn_est.color = (1, 1, 1, 1) if btn_est.state == 'down' else TINTA
-            btn_bar.background_color = TINTA if btn_bar.state == 'down' else STAGE
-            btn_bar.color = (1, 1, 1, 1) if btn_bar.state == 'down' else TINTA
+        # ── Sección: Agrupación ──────────────────────────────────
+        body.add_widget(_sec_lbl('AGRUPAR POR'))
+        grp_row = BoxLayout(size_hint_y=None, height=38, spacing=8)
 
-        btn_est.bind(state=_sync_colores)
-        btn_bar.bind(state=_sync_colores)
-        grp_row.add_widget(btn_est)
-        grp_row.add_widget(btn_bar)
+        btn_agr_est = PillButton(text='Estrato', size_hint_x=None, width=110, font_size=13,
+                                 bg_color=TINTA, pressed_color=LADRILLO, pill_radius=8)
+        btn_agr_bar = PillButton(text='Barrio', size_hint_x=None, width=110, font_size=13,
+                                 bg_color=LINE, fg_color=TINTA, pressed_color=STAGE,
+                                 pill_radius=8)
+
+        def _sel_agrup(sel, other, val):
+            _agrup['v'] = val
+            _activar(sel)
+            _desactivar(other)
+
+        btn_agr_est.bind(on_press=lambda _: _sel_agrup(btn_agr_est, btn_agr_bar, 'estrato'))
+        btn_agr_bar.bind(on_press=lambda _: _sel_agrup(btn_agr_bar, btn_agr_est, 'barrio'))
+        grp_row.add_widget(btn_agr_est)
+        grp_row.add_widget(btn_agr_bar)
         grp_row.add_widget(Label())
         body.add_widget(grp_row)
 
-        # ── Selector de estratos ──────────────────────────────────
-        body.add_widget(Label(text='Estratos a incluir (todos por defecto):',
-                              font_size=11, color=MUTED,
-                              size_hint_y=None, height=18,
-                              halign='left', text_size=(540, 18)))
+        # ── Sección: Estratos ────────────────────────────────────
+        body.add_widget(_sec_lbl('ESTRATOS A INCLUIR  (todos por defecto)'))
 
-        est_row = BoxLayout(size_hint_y=None, height=38, spacing=6)
-        est_btns = {}
-        for est in estratos:
-            tb = ToggleButton(text=f'E{est}', state='down',
-                              size_hint_x=None, width=52, font_size=11,
-                              background_normal='', background_down='',
-                              background_color=TINTA, color=(1, 1, 1, 1))
-            def _sync_est(inst, val):
-                inst.background_color = TINTA if inst.state == 'down' else STAGE
-                inst.color = (1, 1, 1, 1) if inst.state == 'down' else TINTA
-            tb.bind(state=_sync_est)
-            est_btns[est] = tb
-            est_row.add_widget(tb)
+        ctrl_est = BoxLayout(size_hint_y=None, height=30, spacing=8)
+        bt_e = PillButton(text='Todos', size_hint_x=None, width=76, font_size=12,
+                          bg_color=LINE, fg_color=TINTA, pressed_color=STAGE, pill_radius=8)
+        bn_e = PillButton(text='Ninguno', size_hint_x=None, width=84, font_size=12,
+                          bg_color=LINE, fg_color=TINTA, pressed_color=STAGE, pill_radius=8)
 
-        # Botones Todos / Ninguno
-        def _todos(_):
-            for tb in est_btns.values():
-                tb.state = 'down'
-        def _ninguno(_):
-            for tb in est_btns.values():
-                tb.state = 'normal'
+        def _todos_est(_):
+            for e in estratos:
+                est_sel[e] = True
+                _activar(est_pills[e])
 
-        btn_todos   = Button(text='Todos', size_hint_x=None, width=60, font_size=10,
-                             background_normal='', background_color=STAGE, color=TINTA)
-        btn_ninguno = Button(text='Ninguno', size_hint_x=None, width=64, font_size=10,
-                             background_normal='', background_color=STAGE, color=TINTA)
-        btn_todos.bind(on_press=_todos)
-        btn_ninguno.bind(on_press=_ninguno)
-        est_row.add_widget(Label(size_hint_x=None, width=10))
-        est_row.add_widget(btn_todos)
-        est_row.add_widget(btn_ninguno)
-        est_row.add_widget(Label())
-        body.add_widget(est_row)
+        def _nada_est(_):
+            for e in estratos:
+                est_sel[e] = False
+                _desactivar(est_pills[e])
 
-        # ── Barrios a incluir ─────────────────────────────────────
-        body.add_widget(Label(text='Barrios a incluir (todos por defecto):',
-                              font_size=11, color=MUTED,
-                              size_hint_y=None, height=18,
-                              halign='left', text_size=(540, 18)))
+        bt_e.bind(on_press=_todos_est)
+        bn_e.bind(on_press=_nada_est)
+        ctrl_est.add_widget(bt_e)
+        ctrl_est.add_widget(bn_e)
+        ctrl_est.add_widget(Label())
+        body.add_widget(ctrl_est)
 
-        bar_scroll = ScrollView(size_hint_y=None, height=72)
-        bar_grid   = GridLayout(cols=5, size_hint_y=None, spacing=4, padding=[0, 2])
+        est_scroll = ScrollView(size_hint_y=None, height=44, do_scroll_y=False)
+        est_inner  = BoxLayout(size_hint_x=None, height=44, spacing=6, padding=[0, 2])
+        est_inner.bind(minimum_width=est_inner.setter('width'))
+
+        for e in estratos:
+            w = max(60, len(str(e)) * 9 + 28)
+            p = PillButton(text=str(e), size_hint_x=None, width=w,
+                           font_size=12, bold=True,
+                           bg_color=TINTA, pressed_color=LADRILLO, pill_radius=8)
+            est_pills[e] = p
+
+            def _tog_est(_, ev=e):
+                est_sel[ev] = not est_sel[ev]
+                (_activar if est_sel[ev] else _desactivar)(est_pills[ev])
+
+            p.bind(on_press=_tog_est)
+            est_inner.add_widget(p)
+
+        est_scroll.add_widget(est_inner)
+        body.add_widget(est_scroll)
+
+        # ── Sección: Barrios ─────────────────────────────────────
+        body.add_widget(_sec_lbl('BARRIOS A INCLUIR  (todos por defecto)'))
+
+        ctrl_bar = BoxLayout(size_hint_y=None, height=30, spacing=8)
+        bt_b = PillButton(text='Todos', size_hint_x=None, width=76, font_size=12,
+                          bg_color=LINE, fg_color=TINTA, pressed_color=STAGE, pill_radius=8)
+        bn_b = PillButton(text='Ninguno', size_hint_x=None, width=84, font_size=12,
+                          bg_color=LINE, fg_color=TINTA, pressed_color=STAGE, pill_radius=8)
+
+        def _todos_bar(_):
+            for b in barrios:
+                bar_sel[b] = True
+                _activar(bar_pills[b])
+
+        def _nada_bar(_):
+            for b in barrios:
+                bar_sel[b] = False
+                _desactivar(bar_pills[b])
+
+        bt_b.bind(on_press=_todos_bar)
+        bn_b.bind(on_press=_nada_bar)
+        ctrl_bar.add_widget(bt_b)
+        ctrl_bar.add_widget(bn_b)
+        ctrl_bar.add_widget(Label())
+        body.add_widget(ctrl_bar)
+
+        bar_scroll = ScrollView(size_hint_y=None, height=136)
+        bar_grid   = GridLayout(cols=4, size_hint_y=None, spacing=4)
         bar_grid.bind(minimum_height=bar_grid.setter('height'))
-        bar_btns = {}
-        for bar in barrios:
-            tb = ToggleButton(text=bar[:14], state='down',
-                              size_hint_y=None, height=30, font_size=10,
-                              background_normal='', background_down='',
-                              background_color=TINTA, color=(1, 1, 1, 1))
-            def _sync_bar(inst, val):
-                inst.background_color = TINTA if inst.state == 'down' else STAGE
-                inst.color = (1, 1, 1, 1) if inst.state == 'down' else TINTA
-            tb.bind(state=_sync_bar)
-            bar_btns[bar] = tb
-            bar_grid.add_widget(tb)
-        bar_scroll.add_widget(bar_grid)
 
-        bar_ctrl = BoxLayout(size_hint_y=None, height=28, spacing=6)
-        btn_bar_todos   = Button(text='Todos', size_hint_x=None, width=60, font_size=10,
-                                 background_normal='', background_color=STAGE, color=TINTA)
-        btn_bar_ninguno = Button(text='Ninguno', size_hint_x=None, width=64, font_size=10,
-                                 background_normal='', background_color=STAGE, color=TINTA)
-        def _bar_todos(_):
-            for tb in bar_btns.values(): tb.state = 'down'
-        def _bar_ninguno(_):
-            for tb in bar_btns.values(): tb.state = 'normal'
-        btn_bar_todos.bind(on_press=_bar_todos)
-        btn_bar_ninguno.bind(on_press=_bar_ninguno)
-        bar_ctrl.add_widget(btn_bar_todos)
-        bar_ctrl.add_widget(btn_bar_ninguno)
-        bar_ctrl.add_widget(Label())
-        body.add_widget(bar_ctrl)
+        for b in barrios:
+            p = PillButton(text=b, size_hint_y=None, height=34, font_size=12,
+                           bg_color=TINTA, pressed_color=LADRILLO, pill_radius=6)
+            bar_pills[b] = p
+
+            def _tog_bar(_, bv=b):
+                bar_sel[bv] = not bar_sel[bv]
+                (_activar if bar_sel[bv] else _desactivar)(bar_pills[bv])
+
+            p.bind(on_press=_tog_bar)
+            bar_grid.add_widget(p)
+
+        bar_scroll.add_widget(bar_grid)
         body.add_widget(bar_scroll)
 
-        # ── Footer ────────────────────────────────────────────────
-        footer = BoxLayout(size_hint_y=None, height=56, spacing=10, padding=[16, 10])
+        # ── Footer ───────────────────────────────────────────────
+        footer = BoxLayout(size_hint_y=None, height=58, spacing=10, padding=[20, 11])
         with footer.canvas.before:
             Color(*STAGE)
-            rf = Rectangle(pos=footer.pos, size=footer.size)
-        footer.bind(pos=lambda _, v: setattr(rf, 'pos', v))
-        footer.bind(size=lambda _, v: setattr(rf, 'size', v))
+            _rf = Rectangle(pos=footer.pos, size=footer.size)
+        footer.bind(pos=lambda _, v: setattr(_rf, 'pos', v),
+                    size=lambda _, v: setattr(_rf, 'size', v))
 
-        popup = Popup(title='', content=content, size_hint=(0.58, None), height=500,
+        popup = Popup(title='', content=content, size_hint=(0.74, None), height=620,
                       background_color=CARD, separator_height=0)
 
         def _exportar(_):
-            agrup = 'estrato' if btn_est.state == 'down' else 'barrio'
-            ests_sel = [e for e, tb in est_btns.items() if tb.state == 'down']
-            bars_sel = [b for b, tb in bar_btns.items() if tb.state == 'down']
+            agrup    = _agrup['v']
+            ests_sel = [e for e in estratos if est_sel[e]]
+            bars_sel = [b for b in barrios  if bar_sel[b]]
             if not ests_sel:
                 return
             popup.dismiss()
             self._ejecutar_exportacion(agrup, ests_sel, bars_sel)
 
-        btn_cancel = Button(text='Cancelar', size_hint=(0.3, None), height=36,
-                            background_normal='', background_color=LINE, color=TINTA,
-                            font_size=12)
-        btn_export = Button(text='↓ Exportar Excel', size_hint=(0.7, None), height=36,
-                            background_normal='', background_color=TINTA,
-                            color=(1, 1, 1, 1), font_size=12)
+        btn_cancel = PillButton(text='Cancelar', size_hint=(0.30, None), height=36,
+                                bg_color=LINE, fg_color=TINTA, pressed_color=STAGE,
+                                font_size=13, pill_radius=8)
+        btn_export = PillButton(text='↓ Exportar Excel', size_hint=(0.70, None), height=36,
+                                bg_color=TINTA, pressed_color=LADRILLO,
+                                font_size=13, pill_radius=8)
         btn_cancel.bind(on_press=popup.dismiss)
         btn_export.bind(on_press=_exportar)
         footer.add_widget(btn_cancel)

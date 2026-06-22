@@ -41,16 +41,19 @@ def _reg():
 
 _reg()
 
-# ── Paleta de marca ───────────────────────────────────────────────────────────
-TINTA    = colors.HexColor('#1B1512')
-VERMILLON = colors.HexColor('#E94E2C')
-LADRILLO = colors.HexColor('#C03A21')
-STAGE    = colors.HexColor('#FBF7F1')
-LINE     = colors.HexColor('#E7DCCF')
-MUTED    = colors.HexColor('#8C8077')
-SUCCESS  = colors.HexColor('#1F8838')
-WARNING  = colors.HexColor('#CC8008')
-WHITE    = colors.white
+# ── Paleta de marca INGESAM (rojo) ───────────────────────────────────────────
+VERDE        = colors.HexColor('#C9040B')   # rojo INGESAM principal
+VERDE_OSC    = colors.HexColor('#8F0307')   # rojo oscuro (footer, banda)
+VERDE_CLARO  = colors.HexColor('#FDECED')   # rojo muy claro (fondos alternos)
+VERDE_TXT    = colors.HexColor('#F7BBBE')   # texto claro sobre rojo
+TINTA        = colors.HexColor('#1B1512')
+VERMILLON    = colors.HexColor('#C9040B')   # rojo (mora/deuda — mismo que brand)
+LINE         = colors.HexColor('#F0C8CA')   # bordes cálidos
+MUTED        = colors.HexColor('#7A5252')   # muted cálido
+SUCCESS      = colors.HexColor('#1F8838')
+WARNING      = colors.HexColor('#CC8008')
+WHITE        = colors.white
+STAGE        = colors.HexColor('#FEF6F4')   # fondo alternado filas
 
 MESES = {
     1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -66,38 +69,43 @@ def _styles():
     S  = 'Sora'
     SB = 'Sora-Bold'
     return {
-        'empresa':  ParagraphStyle('empresa',  fontName=SB,  fontSize=13,
-                                   textColor=TINTA,     spaceAfter=1),
-        'tagline':  ParagraphStyle('tagline',  fontName=J,   fontSize=8,
-                                   textColor=MUTED,     spaceAfter=1),
-        'doc_titulo': ParagraphStyle('doc_titulo', fontName=SB, fontSize=10,
-                                     textColor=VERMILLON, spaceAfter=1, alignment=2),
-        'doc_fecha':  ParagraphStyle('doc_fecha',  fontName=J,  fontSize=8,
-                                     textColor=MUTED,     spaceAfter=1, alignment=2),
-        'sec':      ParagraphStyle('sec', fontName=SB, fontSize=10,
-                                   textColor=WHITE,     spaceAfter=0, spaceBefore=0,
-                                   leftIndent=8),
-        'body':     ParagraphStyle('body', fontName=J,  fontSize=8.5,
-                                   textColor=TINTA,     leading=11),
-        'body_b':   ParagraphStyle('body_b', fontName=JB, fontSize=8.5,
-                                   textColor=TINTA,     leading=11),
-        'muted':    ParagraphStyle('muted', fontName=J,  fontSize=7.5,
-                                   textColor=MUTED),
-        'card_num': ParagraphStyle('card_num', fontName=SB, fontSize=16,
-                                   textColor=TINTA,     spaceAfter=0, alignment=1),
-        'card_lbl': ParagraphStyle('card_lbl', fontName=J,  fontSize=7.5,
-                                   textColor=MUTED,     spaceAfter=0, alignment=1),
-        'pie':      ParagraphStyle('pie', fontName=J, fontSize=7.5,
-                                   textColor=WHITE, alignment=1),
+        # Encabezado del documento
+        'hdr_empresa': ParagraphStyle('hdr_empresa', fontName=SB, fontSize=13,
+                                      textColor=WHITE, spaceAfter=3),
+        'hdr_sub':     ParagraphStyle('hdr_sub',     fontName=J,  fontSize=8,
+                                      textColor=VERDE_TXT, spaceAfter=0),
+        'hdr_doc':     ParagraphStyle('hdr_doc',     fontName=SB, fontSize=11,
+                                      textColor=WHITE, alignment=2, spaceAfter=3),
+        'hdr_fecha':   ParagraphStyle('hdr_fecha',   fontName=J,  fontSize=8,
+                                      textColor=VERDE_TXT, alignment=2),
+        # Cabeceras de sección
+        'sec':         ParagraphStyle('sec', fontName=SB, fontSize=10,
+                                      textColor=WHITE, spaceAfter=0, spaceBefore=0,
+                                      leftIndent=8),
+        # Cuerpo
+        'body':        ParagraphStyle('body', fontName=J,  fontSize=8.5,
+                                      textColor=TINTA, leading=11),
+        'body_b':      ParagraphStyle('body_b', fontName=JB, fontSize=8.5,
+                                      textColor=TINTA, leading=11),
+        'muted':       ParagraphStyle('muted', fontName=J,  fontSize=7.5,
+                                      textColor=MUTED),
+        # Tarjetas financieras
+        'card_num':    ParagraphStyle('card_num', fontName=SB, fontSize=16,
+                                      textColor=TINTA, spaceAfter=0, alignment=1),
+        'card_lbl':    ParagraphStyle('card_lbl', fontName=J,  fontSize=7.5,
+                                      textColor=MUTED, spaceAfter=0, alignment=1),
+        # Pie
+        'pie':         ParagraphStyle('pie', fontName=J, fontSize=7.5,
+                                      textColor=WHITE, alignment=1),
     }
 
 
 def _sec_header(text, st):
-    """Párrafo con fondo VERMILLON que actúa de cabecera de sección."""
+    """Cabecera de sección con fondo verde INGESAM."""
     p = Paragraph(text, st['sec'])
     t = Table([[p]], colWidths=[17.5*cm])
     t.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), VERMILLON),
+        ('BACKGROUND',    (0, 0), (-1, -1), VERDE),
         ('TOPPADDING',    (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING',   (0, 0), (-1, -1), 0),
@@ -161,40 +169,38 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     st = _styles()
     story = []
 
-    # ── ENCABEZADO ────────────────────────────────────────────────────────────
-    logo_path = os.path.join(_BASE, '..', 'logo_png', '04-logo-monocromo-tinta.png')
-    logo_cell = (RLImage(logo_path, width=4.8*cm, height=1.5*cm, kind='proportional')
-                 if os.path.exists(logo_path)
-                 else Paragraph('<b>RECIVA</b>', st['empresa']))
+    # ── ENCABEZADO INGESAM ────────────────────────────────────────────────────
+    logo_path = os.path.join(_BASE, '..', 'logo_png', 'logo-512-space-no-fondo-1.png')
+    logo_img = (RLImage(logo_path, width=1.8*cm, height=1.8*cm, kind='proportional')
+                if os.path.exists(logo_path) else Paragraph('', st['body']))
 
-    hdr_izq = [
-        [logo_cell],
-        [Paragraph('Servicio de Aseo — Hatonuevo, La Guajira', st['tagline'])],
-    ]
-    hdr_der = [
-        [Paragraph('ESTADO DE CUENTA', st['doc_titulo'])],
-        [Paragraph(f'Generado: {date.today().strftime("%d/%m/%Y")}', st['doc_fecha'])],
-    ]
-    t_hdr_izq = Table(hdr_izq, colWidths=[8.5*cm])
-    t_hdr_der = Table(hdr_der, colWidths=[9*cm])
-    t_hdr_izq.setStyle(TableStyle([('TOPPADDING',    (0,0),(-1,-1), 2),
-                                    ('BOTTOMPADDING', (0,0),(-1,-1), 2)]))
-    t_hdr_der.setStyle(TableStyle([('TOPPADDING',    (0,0),(-1,-1), 2),
-                                    ('BOTTOMPADDING', (0,0),(-1,-1), 2)]))
+    cel_logo  = logo_img
+    cel_emp   = [Paragraph('INGESAM ASEO S.A.S E.S.P.', st['hdr_empresa']),
+                 Paragraph('Servicio Público de Aseo — Hatonuevo, La Guajira',
+                            st['hdr_sub'])]
+    cel_doc   = [Paragraph('ESTADO DE CUENTA', st['hdr_doc']),
+                 Paragraph(f'Generado: {date.today().strftime("%d/%m/%Y")}',
+                            st['hdr_fecha'])]
 
-    t_hdr = Table([[t_hdr_izq, t_hdr_der]], colWidths=[8.5*cm, 9*cm])
+    t_hdr = Table([[cel_logo, cel_emp, cel_doc]],
+                  colWidths=[2.2*cm, 10*cm, 5.3*cm])
     t_hdr.setStyle(TableStyle([
-        ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
-        ('TOPPADDING',    (0,0),(-1,-1), 0),
-        ('BOTTOMPADDING', (0,0),(-1,-1), 0),
+        ('BACKGROUND',    (0, 0), (-1, -1), VERDE),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('LEFTPADDING',   (0, 0), (0,  -1), 14),
+        ('LEFTPADDING',   (1, 0), (1,  -1), 12),
+        ('RIGHTPADDING',  (2, 0), (2,  -1), 14),
+        ('LEFTPADDING',   (2, 0), (2,  -1), 8),
     ]))
     story.append(t_hdr)
-    story.append(Spacer(1, 6))
-    story.append(HRFlowable(width='100%', thickness=2, color=VERMILLON, spaceAfter=10))
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width='100%', thickness=2, color=VERDE_OSC, spaceAfter=10))
 
     # ── DATOS DEL SUSCRIPTOR ──────────────────────────────────────────────────
     story.append(_sec_header('Datos del Suscriptor', st))
-    story.append(Spacer(1, 4))
+    story.append(Spacer(1, 8))
 
     datos = [
         [Paragraph('Cuenta contrato', st['body_b']), Paragraph(str(cuenta), st['body']),
@@ -208,15 +214,15 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     ]
     t_sus = Table(datos, colWidths=[3.5*cm, 7*cm, 3.5*cm, 3.5*cm])
     t_sus.setStyle(TableStyle([
-        ('ROWBACKGROUNDS',  (0,0),(-1,-1), [WHITE, STAGE]),
-        ('TOPPADDING',      (0,0),(-1,-1), 5),
-        ('BOTTOMPADDING',   (0,0),(-1,-1), 5),
-        ('LEFTPADDING',     (0,0),(-1,-1), 6),
-        ('RIGHTPADDING',    (0,0),(-1,-1), 6),
-        ('LINEBELOW',       (0,-1),(-1,-1), 0.5, LINE),
-        ('LINEBEFORE',      (0,0),(0,-1),  0.5, LINE),
-        ('LINEAFTER',       (-1,0),(-1,-1),0.5, LINE),
-        ('LINEABOVE',       (0,0),(-1,0),  0.5, LINE),
+        ('ROWBACKGROUNDS',  (0, 0), (-1, -1), [WHITE, STAGE]),
+        ('TOPPADDING',      (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING',   (0, 0), (-1, -1), 5),
+        ('LEFTPADDING',     (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING',    (0, 0), (-1, -1), 6),
+        ('LINEBELOW',       (0, -1), (-1, -1), 0.5, LINE),
+        ('LINEBEFORE',      (0,  0), (0,  -1), 0.5, LINE),
+        ('LINEAFTER',       (-1, 0), (-1, -1), 0.5, LINE),
+        ('LINEABOVE',       (0,  0), (-1,  0), 0.5, LINE),
     ]))
     story.append(t_sus)
     story.append(Spacer(1, 12))
@@ -225,18 +231,17 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     story.append(_sec_header('Resumen Financiero', st))
     story.append(Spacer(1, 4))
 
-    # Tabla 2 filas: fila 0 = números grandes, fila 1 = etiquetas
-    color_deuda  = VERMILLON if deuda > 0 else SUCCESS
-    sn_fac  = ParagraphStyle('sn_fac',  fontName='Sora-Bold', fontSize=17,
-                              textColor=TINTA,      alignment=1, spaceAfter=0)
-    sn_rec  = ParagraphStyle('sn_rec',  fontName='Sora-Bold', fontSize=17,
-                              textColor=SUCCESS,    alignment=1, spaceAfter=0)
-    sn_deu  = ParagraphStyle('sn_deu',  fontName='Sora-Bold', fontSize=17,
-                              textColor=color_deuda, alignment=1, spaceAfter=0)
-    sn_est  = ParagraphStyle('sn_est',  fontName='Sora-Bold', fontSize=15,
-                              textColor=color_estado, alignment=1, spaceAfter=0)
-    lbl_c   = ParagraphStyle('lbl_c',   fontName='Jakarta',   fontSize=7.5,
-                              textColor=MUTED,      alignment=1, spaceAfter=0)
+    color_deuda = VERMILLON if deuda > 0 else SUCCESS
+    sn_fac = ParagraphStyle('sn_fac', fontName='Sora-Bold', fontSize=17,
+                             textColor=TINTA,       alignment=1, spaceAfter=0)
+    sn_rec = ParagraphStyle('sn_rec', fontName='Sora-Bold', fontSize=17,
+                             textColor=SUCCESS,     alignment=1, spaceAfter=0)
+    sn_deu = ParagraphStyle('sn_deu', fontName='Sora-Bold', fontSize=17,
+                             textColor=color_deuda, alignment=1, spaceAfter=0)
+    sn_est = ParagraphStyle('sn_est', fontName='Sora-Bold', fontSize=15,
+                             textColor=color_estado, alignment=1, spaceAfter=0)
+    lbl_c  = ParagraphStyle('lbl_c',  fontName='Jakarta',   fontSize=7.5,
+                             textColor=MUTED,       alignment=1, spaceAfter=0)
 
     CW = [4.375*cm] * 4
     row_nums = [
@@ -253,21 +258,21 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     ]
     t_cards = Table([row_nums, row_lbl], colWidths=CW)
     t_cards.setStyle(TableStyle([
-        ('BACKGROUND',    (0,0),(-1,-1), STAGE),
-        ('ALIGN',         (0,0),(-1,-1), 'CENTER'),
-        ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
-        ('TOPPADDING',    (0,0),(-1,0),  10),
-        ('BOTTOMPADDING', (0,0),(-1,0),  4),
-        ('TOPPADDING',    (0,1),(-1,1),  2),
-        ('BOTTOMPADDING', (0,1),(-1,1),  10),
-        ('LEFTPADDING',   (0,0),(-1,-1), 4),
-        ('RIGHTPADDING',  (0,0),(-1,-1), 4),
-        ('INNERGRID',     (0,0),(-1,-1), 0.5, LINE),
-        ('BOX',           (0,0),(-1,-1), 0.5, LINE),
-        ('LINEABOVE',     (0,0),(0,-1), 3, TINTA),
-        ('LINEABOVE',     (1,0),(1,-1), 3, SUCCESS),
-        ('LINEABOVE',     (2,0),(2,-1), 3, color_deuda),
-        ('LINEABOVE',     (3,0),(3,-1), 3, color_estado),
+        ('BACKGROUND',    (0, 0), (-1, -1), STAGE),
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1,  0), 18),
+        ('BOTTOMPADDING', (0, 0), (-1,  0), 18),
+        ('TOPPADDING',    (0, 1), (-1,  1), 12),
+        ('BOTTOMPADDING', (0, 1), (-1,  1), 18),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ('INNERGRID',     (0, 0), (-1, -1), 0.5, LINE),
+        ('BOX',           (0, 0), (-1, -1), 0.5, LINE),
+        ('LINEABOVE',     (0, 0), (0,  -1), 3, TINTA),
+        ('LINEABOVE',     (1, 0), (1,  -1), 3, SUCCESS),
+        ('LINEABOVE',     (2, 0), (2,  -1), 3, color_deuda),
+        ('LINEABOVE',     (3, 0), (3,  -1), 3, color_estado),
     ]))
     story.append(t_cards)
     story.append(Spacer(1, 12))
@@ -276,7 +281,7 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     all_months = sorted(set(list(facturas.keys()) + list(recaudos.keys())))
     if all_months:
         story.append(_sec_header('Historial de Pagos por Período', st))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 8))
 
         enc = [[
             Paragraph('Año',       st['sec']),
@@ -291,34 +296,34 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
             fac_v = facturas.get((a, m), 0)
             rec_v = recaudos.get((a, m), 0)
             if fac_v > 0 and rec_v >= fac_v * 0.95:
-                est, col_e = 'Pagado',     SUCCESS
+                est, col_e = 'Pagado',      SUCCESS
             elif fac_v > 0:
-                est, col_e = 'Pendiente',  VERMILLON
+                est, col_e = 'Pendiente',   VERMILLON
             else:
                 est, col_e = 'Sin factura', MUTED
             col_estados.append(col_e)
             filas.append([
-                Paragraph(str(a),                st['body']),
-                Paragraph(MESES.get(m, str(m)),  st['body']),
-                Paragraph(f'${fac_v:,.0f}',      st['body']),
-                Paragraph(f'${rec_v:,.0f}',      st['body']),
-                Paragraph(est,                   st['body']),
+                Paragraph(str(a),               st['body']),
+                Paragraph(MESES.get(m, str(m)), st['body']),
+                Paragraph(f'${fac_v:,.0f}',     st['body']),
+                Paragraph(f'${rec_v:,.0f}',     st['body']),
+                Paragraph(est,                  st['body']),
             ])
 
         estilos = [
-            ('BACKGROUND',    (0,0),(-1,0), TINTA),
-            ('ROWBACKGROUNDS',(0,1),(-1,-1),[WHITE, STAGE]),
-            ('TOPPADDING',    (0,0),(-1,-1), 4),
-            ('BOTTOMPADDING', (0,0),(-1,-1), 4),
-            ('LEFTPADDING',   (0,0),(-1,-1), 6),
-            ('RIGHTPADDING',  (0,0),(-1,-1), 6),
-            ('ALIGN',         (2,0),(3,-1), 'RIGHT'),
-            ('ALIGN',         (4,0),(4,-1), 'CENTER'),
-            ('GRID',          (0,0),(-1,-1), 0.3, LINE),
-            ('FONTSIZE',      (0,0),(-1,-1), 8.5),
+            ('BACKGROUND',    (0, 0), (-1,  0), VERDE),
+            ('ROWBACKGROUNDS',(0, 1), (-1, -1), [WHITE, STAGE]),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
+            ('ALIGN',         (2, 0), (3, -1), 'RIGHT'),
+            ('ALIGN',         (4, 0), (4, -1), 'CENTER'),
+            ('GRID',          (0, 0), (-1, -1), 0.3, LINE),
+            ('FONTSIZE',      (0, 0), (-1, -1), 8.5),
         ]
         for i, col_e in enumerate(col_estados, start=1):
-            estilos.append(('TEXTCOLOR', (4,i),(4,i), col_e))
+            estilos.append(('TEXTCOLOR', (4, i), (4, i), col_e))
 
         t_hist = Table(enc + filas,
                        colWidths=[2*cm, 3.5*cm, 4*cm, 4*cm, 4*cm],
@@ -330,7 +335,7 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
     # ── PQR ───────────────────────────────────────────────────────────────────
     if pqr_list:
         story.append(_sec_header('PQR Asociadas', st))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 8))
 
         COLOR_ESTADO_PDF = {
             'Abierto':    VERMILLON,
@@ -351,24 +356,24 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
             c_e = COLOR_ESTADO_PDF.get(p[3], MUTED)
             col_pqr.append(c_e)
             filas_pqr.append([
-                Paragraph(str(p[0]),        st['body']),
-                Paragraph(p[1] or '—',      st['body']),
-                Paragraph((p[2] or '—')[:45], st['body']),
-                Paragraph(p[3] or '—',      st['body']),
+                Paragraph(str(p[0]),              st['body']),
+                Paragraph(p[1] or '—',            st['body']),
+                Paragraph((p[2] or '—')[:45],     st['body']),
+                Paragraph(p[3] or '—',            st['body']),
                 Paragraph(str(p[4])[:10] if p[4] else '—', st['body']),
             ])
 
         estilos_pqr = [
-            ('BACKGROUND',    (0,0),(-1,0), TINTA),
-            ('ROWBACKGROUNDS',(0,1),(-1,-1),[WHITE, STAGE]),
-            ('TOPPADDING',    (0,0),(-1,-1), 4),
-            ('BOTTOMPADDING', (0,0),(-1,-1), 4),
-            ('LEFTPADDING',   (0,0),(-1,-1), 6),
-            ('RIGHTPADDING',  (0,0),(-1,-1), 6),
-            ('GRID',          (0,0),(-1,-1), 0.3, LINE),
+            ('BACKGROUND',    (0, 0), (-1,  0), VERDE),
+            ('ROWBACKGROUNDS',(0, 1), (-1, -1), [WHITE, STAGE]),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
+            ('GRID',          (0, 0), (-1, -1), 0.3, LINE),
         ]
         for i, c_e in enumerate(col_pqr, start=1):
-            estilos_pqr.append(('TEXTCOLOR', (3,i),(3,i), c_e))
+            estilos_pqr.append(('TEXTCOLOR', (3, i), (3, i), c_e))
 
         t_pqr = Table(enc_pqr + filas_pqr,
                       colWidths=[1.2*cm, 2.8*cm, 8*cm, 2.8*cm, 2.7*cm],
@@ -379,14 +384,16 @@ def generar_estado_cuenta(info, facturas, recaudos, pqr_list):
 
     # ── PIE DE PÁGINA ─────────────────────────────────────────────────────────
     pie_data = [[Paragraph(
-        'INGESAM — Hatonuevo, La Guajira  ·  Sistema RECIVA  ·  Documento generado automáticamente',
+        'INGESAM ASEO S.A.S E.S.P. — Hatonuevo, La Guajira  ·  '
+        'Tel: +57 300 285 3547  ·  pqringesamaseo@gmail.com  ·  '
+        'Documento generado por Sistema RECIVA',
         st['pie']
     )]]
     t_pie = Table(pie_data, colWidths=[17.5*cm])
     t_pie.setStyle(TableStyle([
-        ('BACKGROUND',    (0,0),(-1,-1), TINTA),
-        ('TOPPADDING',    (0,0),(-1,-1), 7),
-        ('BOTTOMPADDING', (0,0),(-1,-1), 7),
+        ('BACKGROUND',    (0, 0), (-1, -1), VERDE_OSC),
+        ('TOPPADDING',    (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
     story.append(t_pie)
 

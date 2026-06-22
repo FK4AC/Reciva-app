@@ -12,6 +12,8 @@ class MenuLateral(BoxLayout):
 
     def cerrar_sesion(self):
         from kivy.app import App
+        from utils.session import borrar_sesion
+        borrar_sesion()
         app = App.get_running_app()
         app.current_user = None
         app.user_rol = 'operador'

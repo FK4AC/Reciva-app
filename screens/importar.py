@@ -558,9 +558,25 @@ class ImportarScreen(Screen):
 
         def tarea():
             try:
-                from utils.importar import importar_catastro, importar_facturacion, importar_recaudo
+                from utils.catastro import importar_catastro as _importar_catastro
+                from utils.importar import importar_facturacion, importar_recaudo
                 if tipo == 'catastro':
-                    ok, msg = importar_catastro(filepath)
+                    res = _importar_catastro(filepath)
+                    if res.get('error'):
+                        ok, msg = False, res['error']
+                    else:
+                        sc = res['sin_clasificar']
+                        ret = res['retirados']
+                        partes = [
+                            f"Catastro importado: {res['nuevos']} nuevos, "
+                            f"{res['actualizados']} actualizados, "
+                            f"{len(ret)} retirados, {res['omitidos']} omitidos"
+                        ]
+                        if sc:
+                            partes.append(f"Sin clasificar ({len(sc)}): "
+                                          f"{', '.join(str(x) for x in sc[:5])}"
+                                          f"{'…' if len(sc) > 5 else ''}")
+                        ok, msg = True, '\n'.join(partes)
                 elif tipo == 'facturacion':
                     ok, msg = importar_facturacion(filepath, modo, col_map=col_map)
                 elif tipo == 'recaudo':

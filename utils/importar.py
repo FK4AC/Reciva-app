@@ -176,14 +176,14 @@ def _bulk_exec(cursor, conn, sql_prefix, ph, suffix, rows):
 # ─────────────────────────────────────────────────────────────────────────────
 _CAT_PREFIX = """
     INSERT INTO suscriptores
-    (susccodi, cuenta, nombre, direccion, municipio, barrio,
+    (cuenta, susccodi, nombre, direccion, municipio, barrio,
      subcategoria, estrato, estado_suministro, territorial,
      departamento, sufijo, desc_servicio, periodo)
     VALUES """
 _CAT_PH     = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 _CAT_SUFFIX = """
      ON DUPLICATE KEY UPDATE
-       cuenta=VALUES(cuenta), nombre=VALUES(nombre),
+       susccodi=VALUES(susccodi), nombre=VALUES(nombre),
        direccion=VALUES(direccion), municipio=VALUES(municipio),
        barrio=VALUES(barrio), subcategoria=VALUES(subcategoria),
        estrato=VALUES(estrato), estado_suministro=VALUES(estado_suministro),
@@ -210,8 +210,8 @@ def importar_catastro(filepath):
 
     cursor = conn.cursor()
     try:
-        # Susccodi existentes antes de la importación
-        cursor.execute("SELECT susccodi FROM suscriptores")
+        # NICs existentes antes de la importación
+        cursor.execute("SELECT cuenta FROM suscriptores")
         existentes_db = {row[0] for row in cursor.fetchall()}
 
         all_rows   = []
@@ -220,16 +220,16 @@ def importar_catastro(filepath):
 
         for _, row in df.iterrows():
             try:
-                susccodi = int(row.get('CUENTA', 0) or 0)
-                if not susccodi:
+                nic = int(row.get('CUENTA', 0) or 0)
+                if not nic:
                     omitidos += 1
                     continue
-                en_archivo.add(susccodi)
+                en_archivo.add(nic)
                 subcategoria = str(
                     row.get('SUBCATEORIA', '') or row.get('SUBCATEGORIA', '') or ''
                 )
                 all_rows.append((
-                    susccodi,
+                    nic,
                     int(row.get('SUSCCODI', 0) or 0),
                     str(row.get('NOMBRE', '') or ''),
                     str(row.get('DIRECCION', '') or ''),
@@ -266,7 +266,7 @@ def importar_catastro(filepath):
                 ph   = ', '.join(['%s'] * len(lote))
                 cursor.execute(
                     f"UPDATE suscriptores SET estado_suministro='RETIRADO' "
-                    f"WHERE susccodi IN ({ph})",
+                    f"WHERE cuenta IN ({ph})",
                     lote
                 )
             conn.commit()
@@ -544,7 +544,7 @@ def previsualizar_catastro(filepath):
         return False, "Error de conexión"
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT susccodi FROM suscriptores")
+        cursor.execute("SELECT cuenta FROM suscriptores")
         existentes = {row[0] for row in cursor.fetchall()}
     except Exception as e:
         return False, f"Error DB: {e}"
@@ -558,26 +558,26 @@ def previsualizar_catastro(filepath):
 
     for _, row in df.iterrows():
         try:
-            susccodi = int(row.get('CUENTA', 0) or 0)
-            if not susccodi:
+            nic = int(row.get('CUENTA', 0) or 0)
+            if not nic:
                 omitidos += 1
                 continue
             total += 1
-            en_archivo.add(susccodi)
+            en_archivo.add(nic)
             nombre = str(row.get('NOMBRE', '') or '')
             barrio = str(row.get('BARRIO', '') or '')
             subcategoria = str(row.get('SUBCATEORIA', '') or row.get('SUBCATEGORIA', '') or '')
             estrato = subcategoria.split('-')[0].strip()
             estado = str(row.get('ESTADO_SUMINISTRO', '') or '')
 
-            if susccodi in existentes:
+            if nic in existentes:
                 actualizados += 1
                 if len(muestra_a) < 4:
-                    muestra_a.append((str(susccodi), nombre[:25], barrio[:15], estrato, estado, 'Actualizar'))
+                    muestra_a.append((str(nic), nombre[:25], barrio[:15], estrato, estado, 'Actualizar'))
             else:
                 nuevos += 1
                 if len(muestra_n) < 4:
-                    muestra_n.append((str(susccodi), nombre[:25], barrio[:15], estrato, estado, 'Nuevo'))
+                    muestra_n.append((str(nic), nombre[:25], barrio[:15], estrato, estado, 'Nuevo'))
         except Exception:
             omitidos += 1
 
@@ -591,7 +591,7 @@ def previsualizar_catastro(filepath):
         'retirados': retirados,
         'omitidas': omitidos,
         'periodos': [],
-        'columnas': ['Susccodi', 'Nombre', 'Barrio', 'Estrato', 'Estado', 'Acción'],
+        'columnas': ['Cuenta (NIC)', 'Nombre', 'Barrio', 'Estrato', 'Estado', 'Acción'],
         'muestra': (muestra_n + muestra_a)[:8],
     }
 

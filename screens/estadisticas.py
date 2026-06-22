@@ -177,8 +177,8 @@ class EstadisticasScreen(Screen):
                     SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
                     FROM facturas WHERE anno = %s AND mes = %s
                     GROUP BY cuenta_contrato
-                ) fa ON fa.cuenta_contrato = s.cuenta
-                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.cuenta
+                ) fa ON fa.cuenta_contrato = s.susccodi
+                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.susccodi
                 GROUP BY s.estrato
                 ORDER BY CAST(s.estrato AS UNSIGNED)
             """.format(rec_subquery), (anno, mes, anno, mes))
@@ -195,8 +195,8 @@ class EstadisticasScreen(Screen):
                     SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
                     FROM facturas WHERE anno = %s AND mes = %s
                     GROUP BY cuenta_contrato
-                ) fa ON fa.cuenta_contrato = s.cuenta
-                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.cuenta
+                ) fa ON fa.cuenta_contrato = s.susccodi
+                LEFT JOIN ({}) ra ON ra.cuenta_contrato = s.susccodi
                 GROUP BY s.barrio
                 ORDER BY s.barrio
             """.format(rec_subquery), (anno, mes, anno, mes))

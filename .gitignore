@@ -3,3 +3,17 @@ __pycache__/
 *.pyc
 *.pyo
 .kivy/
+
+# Build artifacts
+build/
+dist/
+
+# Generated files
+estados_cuenta/*.pdf
+reporte_comercial*.xlsx
+
+# Unrelated projects / temp
+iglesia_app/
+presentacion_estratos.py
+scripts_temp/
+EstratoViewer.spec

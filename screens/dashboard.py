@@ -3,15 +3,15 @@ from kivy.uix.popup import Popup
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
-from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.properties import StringProperty, ListProperty, NumericProperty
 from kivy.clock import Clock
 import threading
 from db.connection import get_connection
-from theme import TINTA, STAGE, CARD, VERMILLON, LINE, MUTED, TEXT_SEC, SUCCESS, DANGER, WARNING
+from theme import TINTA, STAGE, CARD, VERMILLON, LADRILLO, LINE, MUTED, TEXT_SEC, SUCCESS, DANGER, WARNING
 import utils.overlay as overlay
+from widgets.components import PillButton
 
 MESES_NOMBRE = {
     '1': 'Enero', '2': 'Febrero', '3': 'Marzo', '4': 'Abril',
@@ -21,19 +21,22 @@ MESES_NOMBRE = {
 
 
 class DashboardScreen(Screen):
-    usuario_nombre     = StringProperty('')
-    total_suscriptores = StringProperty('—')
-    total_facturado    = StringProperty('—')
-    total_recaudado    = StringProperty('—')
-    deuda_total        = StringProperty('—')
-    sus_con_deuda      = StringProperty('—')
-    pqr_abiertas       = StringProperty('—')
-    tasa_cobro         = StringProperty('—')
-    tasa_cobro_color   = ListProperty([0.549, 0.502, 0.467, 1])
-    tasa_cobro_pct     = NumericProperty(0.0)
-    periodo_label      = StringProperty('Selecciona un período')
-    años_disponibles   = ListProperty([])
-    meses_disponibles  = ListProperty([])
+    usuario_nombre      = StringProperty('')
+    total_suscriptores  = StringProperty('—')
+    total_facturado     = StringProperty('—')
+    total_recaudado     = StringProperty('—')
+    deuda_total         = StringProperty('—')
+    sus_con_deuda       = StringProperty('—')
+    pqr_abiertas        = StringProperty('—')
+    tasa_cobro          = StringProperty('—')
+    tasa_cobro_color    = ListProperty([0.549, 0.502, 0.467, 1])
+    tasa_cobro_pct      = NumericProperty(0.0)
+    variacion_recaudo   = StringProperty('—')
+    variacion_rec_color = ListProperty([0.549, 0.502, 0.467, 1])
+    pqr_por_tipo        = StringProperty('—')
+    periodo_label       = StringProperty('Selecciona un período')
+    años_disponibles    = ListProperty([])
+    meses_disponibles   = ListProperty([])
 
     def on_enter(self):
         app = self.manager.app
@@ -45,6 +48,7 @@ class DashboardScreen(Screen):
     def _tarea_inicio(self):
         d = {'sus': '—', 'pqr': '0', 'años': [], 'meses': [],
              'año': None, 'mes': None, 'fac': 0.0, 'rec': 0.0, 'deuda_sus': 0,
+             'rec_prev': 0.0, 'pqr_tipos': [],
              'sin_conexion': False}
         conn = get_connection()
         if not conn:
@@ -96,12 +100,42 @@ class DashboardScreen(Screen):
                         )
                     """, (año, mes))
                     d['deuda_sus'] = cursor.fetchone()[0]
+
+                    # Recaudo del mes anterior (para variación)
+                    prev_año, prev_mes = self._mes_anterior(año, mes)
+                    cursor.execute(
+                        "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE anno=%s AND mes=%s",
+                        (prev_año, prev_mes)
+                    )
+                    d['rec_prev'] = float(cursor.fetchone()[0])
+
+                # PQR por tipo (independiente del período)
+                cursor.execute("""
+                    SELECT COALESCE(tipo, 'Sin tipo'), COUNT(*)
+                    FROM pqr GROUP BY tipo ORDER BY COUNT(*) DESC LIMIT 4
+                """)
+                d['pqr_tipos'] = cursor.fetchall()
+
             except Exception as e:
                 print(f'Error dashboard: {e}')
             finally:
                 cursor.close()
                 conn.close()
         Clock.schedule_once(lambda *_: self._aplicar_inicio(d), 0)
+
+    @staticmethod
+    def _mes_anterior(año, mes):
+        m, a = int(mes), int(año)
+        return (str(a - 1), '12') if m == 1 else (str(a), str(m - 1))
+
+    def _aplicar_variacion(self, rec_actual, rec_prev):
+        if rec_prev > 0:
+            pct = (rec_actual - rec_prev) / rec_prev * 100
+            self.variacion_recaudo   = f'{"↑ +" if pct >= 0 else "↓ "}{pct:.1f}%'
+            self.variacion_rec_color = list(SUCCESS) if pct >= 0 else list(VERMILLON)
+        else:
+            self.variacion_recaudo   = '—'
+            self.variacion_rec_color = [0.549, 0.502, 0.467, 1]
 
     def _set_tasa(self, fac, rec):
         if fac > 0:
@@ -139,6 +173,10 @@ class DashboardScreen(Screen):
             self.deuda_total = f'${max(0, d["fac"] - d["rec"]):,.0f}'
             self.sus_con_deuda = f'{d["deuda_sus"]:,}'
             self._set_tasa(d['fac'], d['rec'])
+            self._aplicar_variacion(d['rec'], d.get('rec_prev', 0.0))
+        tipos = d.get('pqr_tipos', [])
+        self.pqr_por_tipo = (' · '.join(f'{t} ({c})' for t, c in tipos)
+                             if tipos else 'Sin datos')
 
     def cambiar_periodo(self, anno, mes):
         if anno in ('Año', '') or mes in ('Mes', ''):
@@ -149,7 +187,7 @@ class DashboardScreen(Screen):
         ).start()
 
     def _tarea_stats(self, anno, mes):
-        d = {'año': anno, 'mes': mes, 'fac': 0.0, 'rec': 0.0, 'deuda_sus': 0}
+        d = {'año': anno, 'mes': mes, 'fac': 0.0, 'rec': 0.0, 'deuda_sus': 0, 'rec_prev': 0.0}
         conn = get_connection()
         if conn:
             cursor = conn.cursor()
@@ -174,6 +212,12 @@ class DashboardScreen(Screen):
                     )
                 """, (anno, mes))
                 d['deuda_sus'] = cursor.fetchone()[0]
+                prev_año, prev_mes = self._mes_anterior(anno, mes)
+                cursor.execute(
+                    "SELECT COALESCE(SUM(valor_recibo), 0) FROM recaudos WHERE anno=%s AND mes=%s",
+                    (prev_año, prev_mes)
+                )
+                d['rec_prev'] = float(cursor.fetchone()[0])
             except Exception as e:
                 print(f'Error stats dashboard: {e}')
             finally:
@@ -189,6 +233,7 @@ class DashboardScreen(Screen):
         self.deuda_total = f'${max(0, d["fac"] - d["rec"]):,.0f}'
         self.sus_con_deuda = f'{d["deuda_sus"]:,}'
         self._set_tasa(d['fac'], d['rec'])
+        self._aplicar_variacion(d['rec'], d.get('rec_prev', 0.0))
         overlay.hide()
 
     def popup_barrios(self):
@@ -219,12 +264,12 @@ class DashboardScreen(Screen):
             _rt = Rectangle(pos=tab_bar.pos, size=tab_bar.size)
         tab_bar.bind(pos=lambda _, v: setattr(_rt, 'pos', v),
                      size=lambda _, v: setattr(_rt, 'size', v))
-        btn_b = Button(text='Por Barrio',  font_size=14, size_hint_x=0.33,
-                       background_normal='', background_color=VERMILLON, color=(1,1,1,1))
-        btn_e = Button(text='Por Estrato', font_size=14, size_hint_x=0.33,
-                       background_normal='', background_color=LINE, color=TINTA)
-        btn_s = Button(text='Por Estado',  font_size=14, size_hint_x=0.34,
-                       background_normal='', background_color=LINE, color=TINTA)
+        btn_b = PillButton(text='Por Barrio',  font_size=14, size_hint_x=0.33,
+                           bg_color=VERMILLON, pressed_color=LADRILLO, pill_radius=4)
+        btn_e = PillButton(text='Por Estrato', font_size=14, size_hint_x=0.33,
+                           bg_color=LINE, pressed_color=STAGE, fg_color=TINTA, pill_radius=4)
+        btn_s = PillButton(text='Por Estado',  font_size=14, size_hint_x=0.34,
+                           bg_color=LINE, pressed_color=STAGE, fg_color=TINTA, pill_radius=4)
         tab_bar.add_widget(btn_b)
         tab_bar.add_widget(btn_e)
         tab_bar.add_widget(btn_s)
@@ -251,8 +296,8 @@ class DashboardScreen(Screen):
             _rf = Rectangle(pos=footer.pos, size=footer.size)
         footer.bind(pos=lambda _, v: setattr(_rf, 'pos', v),
                     size=lambda _, v: setattr(_rf, 'size', v))
-        btn_cerrar = Button(text='Cerrar', background_normal='',
-                            background_color=LINE, color=TINTA, font_size=12)
+        btn_cerrar = PillButton(text='Cerrar', bg_color=LINE, fg_color=TINTA,
+                               pressed_color=STAGE, font_size=12)
         footer.add_widget(btn_cerrar)
         content.add_widget(footer)
 
@@ -274,9 +319,10 @@ class DashboardScreen(Screen):
             row.bind(pos=lambda _, v: setattr(r, 'pos', v),
                      size=lambda _, v: setattr(r, 'size', v))
             for txt, sx in cols:
-                row.add_widget(Label(text=txt, bold=True, font_size=13, color=LINE,
-                                     size_hint_x=sx, halign='left', valign='middle',
-                                     text_size=(200, 34)))
+                lbl = Label(text=txt, bold=True, font_size=13, color=LINE,
+                            size_hint_x=sx, halign='left', valign='middle')
+                lbl.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0] - 4, v[1])))
+                row.add_widget(lbl)
             return row
 
         def _data_row(celdas, bg):
@@ -388,11 +434,11 @@ class DashboardScreen(Screen):
             tab_actual[0] = tab
             for k, btn in tabs.items():
                 if k == tab:
-                    btn.background_color = VERMILLON
-                    btn.color = (1, 1, 1, 1)
+                    btn.bg_color = list(VERMILLON)
+                    btn.fg_color = [1, 1, 1, 1]
                 else:
-                    btn.background_color = LINE
-                    btn.color = TINTA
+                    btn.bg_color = list(LINE)
+                    btn.fg_color = list(TINTA)
             if datos:
                 renderers[tab]()
 

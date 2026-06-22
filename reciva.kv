@@ -115,7 +115,7 @@
 
     canvas.before:
         Color:
-            rgba: 0.106, 0.082, 0.071, 1
+            rgba: 0.231, 0.173, 0.137, 1
         Rectangle:
             pos: self.pos
             size: self.size
@@ -127,7 +127,7 @@
         padding: [14, 10]
         canvas.before:
             Color:
-                rgba: 0.082, 0.063, 0.055, 1
+                rgba: 0.176, 0.125, 0.098, 1
             Rectangle:
                 pos: self.pos
                 size: self.size
@@ -137,6 +137,7 @@
             halign: 'left'
             allow_stretch: True
             keep_ratio: True
+            mipmap: True
 
     Widget:
         size_hint_y: None
@@ -156,7 +157,7 @@
         spacing: 10
         canvas.before:
             Color:
-                rgba: 0.082, 0.063, 0.055, 1
+                rgba: 0.176, 0.125, 0.098, 1
             Rectangle:
                 pos: self.pos
                 size: self.size
@@ -186,7 +187,7 @@
             Label:
                 text: app.user_rol
                 font_size: 9
-                color: 0.549, 0.502, 0.467, 1
+                color: 0.749, 0.663, 0.612, 1
                 halign: 'left'
                 text_size: self.size
 
@@ -207,63 +208,83 @@
     SidebarButton:
         text: 'Dashboard'
         size_hint_y: None
-        height: 44 if root.rol in ('admin', 'superadmin') else 0
-        opacity: 1 if root.rol in ('admin', 'superadmin') else 0
-        disabled: root.rol not in ('admin', 'superadmin')
+        height: 44 if app.perm_dashboard else 0
+        opacity: 1 if app.perm_dashboard else 0
+        disabled: not app.perm_dashboard
         is_active: root.pantalla_actual == 'dashboard'
         on_press: root.ir_a('dashboard')
 
     SidebarButton:
         text: 'Suscriptores'
         size_hint_y: None
-        height: 44 if root.rol in ('admin', 'superadmin') else 0
-        opacity: 1 if root.rol in ('admin', 'superadmin') else 0
-        disabled: root.rol not in ('admin', 'superadmin')
+        height: 44 if app.perm_suscriptores else 0
+        opacity: 1 if app.perm_suscriptores else 0
+        disabled: not app.perm_suscriptores
         is_active: root.pantalla_actual == 'suscriptores'
         on_press: root.ir_a('suscriptores')
 
     SidebarButton:
         text: 'Facturación'
         size_hint_y: None
-        height: 44 if root.rol in ('admin', 'superadmin') else 0
-        opacity: 1 if root.rol in ('admin', 'superadmin') else 0
-        disabled: root.rol not in ('admin', 'superadmin')
+        height: 44 if app.perm_facturacion else 0
+        opacity: 1 if app.perm_facturacion else 0
+        disabled: not app.perm_facturacion
         is_active: root.pantalla_actual == 'facturacion'
         on_press: root.ir_a('facturacion')
 
     SidebarButton:
         text: 'Tickets / PQR'
         size_hint_y: None
-        height: 44
+        height: 44 if app.perm_tickets else 0
+        opacity: 1 if app.perm_tickets else 0
+        disabled: not app.perm_tickets
         is_active: root.pantalla_actual == 'tickets'
         on_press: root.ir_a('tickets')
 
     SidebarButton:
         text: 'Importar'
         size_hint_y: None
-        height: 44 if root.rol in ('admin', 'superadmin') else 0
-        opacity: 1 if root.rol in ('admin', 'superadmin') else 0
-        disabled: root.rol not in ('admin', 'superadmin')
+        height: 44 if app.perm_importar else 0
+        opacity: 1 if app.perm_importar else 0
+        disabled: not app.perm_importar
         is_active: root.pantalla_actual == 'importar'
         on_press: root.ir_a('importar')
 
     SidebarButton:
         text: 'Usuarios'
         size_hint_y: None
-        height: 44 if root.rol == 'superadmin' else 0
-        opacity: 1 if root.rol == 'superadmin' else 0
-        disabled: root.rol != 'superadmin'
+        height: 44 if app.perm_usuarios else 0
+        opacity: 1 if app.perm_usuarios else 0
+        disabled: not app.perm_usuarios
         is_active: root.pantalla_actual == 'usuarios'
         on_press: root.ir_a('usuarios')
 
     SidebarButton:
         text: 'Estadísticas'
         size_hint_y: None
-        height: 44 if root.rol in ('admin', 'superadmin') else 0
-        opacity: 1 if root.rol in ('admin', 'superadmin') else 0
-        disabled: root.rol not in ('admin', 'superadmin')
+        height: 44 if app.perm_estadisticas else 0
+        opacity: 1 if app.perm_estadisticas else 0
+        disabled: not app.perm_estadisticas
         is_active: root.pantalla_actual == 'estadisticas'
         on_press: root.ir_a('estadisticas')
+
+    SidebarButton:
+        text: 'Volcado'
+        size_hint_y: None
+        height: 44 if app.perm_volcado else 0
+        opacity: 1 if app.perm_volcado else 0
+        disabled: not app.perm_volcado
+        is_active: root.pantalla_actual == 'volcado'
+        on_press: root.ir_a('volcado')
+
+    SidebarButton:
+        text: 'Gestión de Roles'
+        size_hint_y: None
+        height: 44 if app.perm_roles else 0
+        opacity: 1 if app.perm_roles else 0
+        disabled: not app.perm_roles
+        is_active: root.pantalla_actual == 'roles'
+        on_press: root.ir_a('roles')
 
     Widget
 
@@ -319,6 +340,7 @@
                 allow_stretch: True
                 keep_ratio: True
                 halign: 'left'
+                mipmap: True
 
             Widget:
                 size_hint_y: None
@@ -620,7 +642,7 @@
                 AccentCard:
                     accent_color: 0.106, 0.082, 0.071, 1
                     padding: [16, 12]
-                    on_touch_down: if self.collide_point(*args[1].pos): root.popup_barrios()
+                    on_touch_up: if self.collide_point(*args[1].pos): root.popup_barrios()
                     Label:
                         text: root.total_suscriptores
                         font_size: 26
@@ -695,13 +717,13 @@
                         text_size: self.size
 
                 AccentCard:
-                    accent_color: 0.753, 0.227, 0.129, 1
+                    accent_color: 0.914, 0.306, 0.173, 1
                     padding: [16, 12]
                     Label:
                         text: root.sus_con_deuda
                         font_size: 22
                         bold: True
-                        color: 0.753, 0.227, 0.129, 1
+                        color: 0.914, 0.306, 0.173, 1
                         halign: 'left'
                         text_size: self.size
                     Label:
@@ -758,6 +780,47 @@
                             Rectangle:
                                 pos: self.pos
                                 size: self.width * root.tasa_cobro_pct / 100.0, self.height
+
+            # Fila 3 — variación recaudo y PQR por tipo
+            GridLayout:
+                cols: 2
+                spacing: 14
+                size_hint_y: None
+                height: 110
+
+                AccentCard:
+                    accent_color: root.variacion_rec_color
+                    padding: [16, 12]
+                    Label:
+                        text: root.variacion_recaudo
+                        font_size: 22
+                        bold: True
+                        color: root.variacion_rec_color
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Variación recaudo vs mes anterior'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
+
+                AccentCard:
+                    accent_color: 0.435, 0.212, 0.682, 1
+                    padding: [16, 12]
+                    Label:
+                        text: root.pqr_por_tipo
+                        font_size: 12
+                        bold: True
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'PQR por tipo'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
 
             Widget
 
@@ -975,8 +1038,8 @@
                     size_hint_x: 0.18
                     font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    on_size: self.text_size = (self.width - 8, self.height)
                 Label:
                     text: 'Nombre'
                     bold: True
@@ -984,8 +1047,8 @@
                     size_hint_x: 0.36
                     font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    on_size: self.text_size = (self.width - 8, self.height)
                 Label:
                     text: 'Barrio'
                     bold: True
@@ -993,17 +1056,17 @@
                     size_hint_x: 0.18
                     font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    on_size: self.text_size = (self.width - 8, self.height)
                 Label:
                     text: 'Estrato'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.09
                     font_size: 12
-                    halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    halign: 'center'
+                    valign: 'middle'
+                    on_size: self.text_size = self.size
                 Label:
                     text: 'Estado'
                     bold: True
@@ -1011,14 +1074,17 @@
                     size_hint_x: 0.12
                     font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    on_size: self.text_size = (self.width - 4, self.height)
                 Label:
                     text: 'Ver'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.07
                     font_size: 12
+                    halign: 'center'
+                    valign: 'middle'
+                    on_size: self.text_size = self.size
 
             ScrollView:
                 BoxLayout:
@@ -1078,7 +1144,7 @@
                         background_color: 0, 0, 0, 0
                         background_normal: ''
                         color: 0.106, 0.082, 0.071, 1
-                        font_size: 12
+                        font_size: 13
 
                 # ── Spinner Mes ──
                 FilterPill:
@@ -1090,25 +1156,25 @@
                         background_color: 0, 0, 0, 0
                         background_normal: ''
                         color: 0.106, 0.082, 0.071, 1
-                        font_size: 12
+                        font_size: 13
 
                 # ── Consultar ──
                 PillButton:
                     text: 'Consultar'
                     size_hint_x: 0.15
-                    font_size: 12
+                    font_size: 13
                     on_press: root.consultar()
 
                 Label:
                     text: root.mensaje
                     color: 0.549, 0.502, 0.467, 1
-                    font_size: 11
+                    font_size: 12
                     halign: 'left'
                     text_size: self.size
 
             # Tarjetas resumen
             GridLayout:
-                cols: 3
+                cols: 4
                 size_hint_y: None
                 height: 92
                 spacing: 14
@@ -1125,7 +1191,7 @@
                         text_size: self.size
                     Label:
                         text: 'Facturado'
-                        font_size: 11
+                        font_size: 12
                         color: 0.549, 0.502, 0.467, 1
                         halign: 'left'
                         text_size: self.size
@@ -1142,7 +1208,7 @@
                         text_size: self.size
                     Label:
                         text: 'Recaudado'
-                        font_size: 11
+                        font_size: 12
                         color: 0.549, 0.502, 0.467, 1
                         halign: 'left'
                         text_size: self.size
@@ -1159,7 +1225,24 @@
                         text_size: self.size
                     Label:
                         text: 'Deuda del período'
-                        font_size: 11
+                        font_size: 12
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        text_size: self.size
+
+                AccentCard:
+                    accent_color: 0.533, 0.200, 0.820, 1
+                    padding: [16, 10]
+                    Label:
+                        text: root.recaudo_mes_cal
+                        font_size: 20
+                        bold: True
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        text_size: self.size
+                    Label:
+                        text: 'Cobrado este mes'
+                        font_size: 12
                         color: 0.549, 0.502, 0.467, 1
                         halign: 'left'
                         text_size: self.size
@@ -1197,17 +1280,17 @@
                             text: 'Estrato'
                             bold: True
                             color: 0.906, 0.863, 0.812, 1
-                            font_size: 11
+                            font_size: 12
                         Label:
                             text: 'Facturas'
                             bold: True
                             color: 0.906, 0.863, 0.812, 1
-                            font_size: 11
+                            font_size: 12
                         Label:
                             text: 'Total'
                             bold: True
                             color: 0.906, 0.863, 0.812, 1
-                            font_size: 11
+                            font_size: 12
 
                     ScrollView:
                         GridLayout:
@@ -1234,7 +1317,7 @@
                             text: 'Pendientes'
                             size_hint_x: None
                             width: 100
-                            font_size: 11
+                            font_size: 12
                             is_active: True
                             on_press: root.cambiar_vista('pendientes')
 
@@ -1243,7 +1326,7 @@
                             text: 'Pagadas'
                             size_hint_x: None
                             width: 84
-                            font_size: 11
+                            font_size: 12
                             on_press: root.cambiar_vista('pagadas')
 
                         TabButton:
@@ -1251,13 +1334,29 @@
                             text: 'Recaudos del mes'
                             size_hint_x: None
                             width: 148
-                            font_size: 11
+                            font_size: 12
                             on_press: root.cambiar_vista('recaudos_mes')
+
+                        TabButton:
+                            id: tab_estrato
+                            text: 'Por Estrato'
+                            size_hint_x: None
+                            width: 90
+                            font_size: 12
+                            on_press: root.cambiar_vista('por_estrato')
+
+                        TabButton:
+                            id: tab_barrio
+                            text: 'Por Barrio'
+                            size_hint_x: None
+                            width: 82
+                            font_size: 12
+                            on_press: root.cambiar_vista('por_barrio')
 
                         Widget:
 
                         FilterPill:
-                            size_hint_x: 0.32
+                            size_hint_x: 0.42
                             pill_radius: 16
                             TextInput:
                                 id: buscador
@@ -1265,8 +1364,8 @@
                                 background_color: 0, 0, 0, 0
                                 foreground_color: 0.106, 0.082, 0.071, 1
                                 multiline: False
-                                font_size: 12
-                                padding: [12, 10]
+                                font_size: 14
+                                padding: [14, 10]
                                 on_text: root.buscar(self.text)
 
                         FilterPill:
@@ -1281,7 +1380,7 @@
                                 background_color: 0, 0, 0, 0
                                 background_normal: ''
                                 color: 0.106, 0.082, 0.071, 1
-                                font_size: 11
+                                font_size: 12
                                 on_text: root.filtrar_barrio(self.text)
 
                     # ── Cabecera dinámica ──
@@ -1446,7 +1545,7 @@
             # Encabezado tabla
             BoxLayout:
                 size_hint_y: None
-                height: 32
+                height: 38
                 spacing: 2
                 canvas.before:
                     Color:
@@ -1460,61 +1559,64 @@
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.06
-                    font_size: 11
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Suscriptor'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
-                    size_hint_x: 0.25
-                    font_size: 11
+                    size_hint_x: 0.22
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Tipo'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
-                    size_hint_x: 0.12
-                    font_size: 11
+                    size_hint_x: 0.13
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Asunto'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
-                    size_hint_x: 0.26
-                    font_size: 11
+                    size_hint_x: 0.27
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Estado'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
-                    size_hint_x: 0.13
-                    font_size: 11
+                    size_hint_x: 0.14
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Fecha'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.11
-                    font_size: 11
+                    font_size: 12
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 4, self.height
                 Label:
                     text: 'Ver'
                     bold: True
                     color: 0.906, 0.863, 0.812, 1
                     size_hint_x: 0.07
-                    font_size: 11
+                    font_size: 12
+                    halign: 'center'
+                    valign: 'middle'
+                    text_size: self.size
 
             ScrollView:
                 BoxLayout:
@@ -1582,38 +1684,38 @@
                     text: 'Nombre'
                     size_hint_x: 0.27
                     bold: True
-                    font_size: 11
+                    font_size: 13
                     color: 0.906, 0.863, 0.812, 1
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
                 Label:
                     text: 'Email'
                     size_hint_x: 0.34
                     bold: True
-                    font_size: 11
+                    font_size: 13
                     color: 0.906, 0.863, 0.812, 1
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
                 Label:
                     text: 'Rol'
                     size_hint_x: 0.16
                     bold: True
-                    font_size: 11
+                    font_size: 13
                     color: 0.906, 0.863, 0.812, 1
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
                 Label:
                     text: 'Estado'
                     size_hint_x: 0.10
                     bold: True
-                    font_size: 11
+                    font_size: 13
                     color: 0.906, 0.863, 0.812, 1
                     halign: 'left'
-                    text_size: self.size
-                    padding: [4, 0]
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
                 Label:
                     text: ''
                     size_hint_x: 0.16
@@ -1891,3 +1993,419 @@
                     size_hint_y: None
                     height: self.minimum_height
                     spacing: 1
+
+
+
+
+
+# ============================================================
+#  VOLCADO
+# ============================================================
+<VolcadoScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: 'horizontal'
+
+        MenuLateral:
+            pantalla_actual: 'volcado'
+            rol: app.user_rol
+
+        # ── Contenido ────────────────────────────────────────
+        BoxLayout:
+            orientation: 'vertical'
+            spacing: 0
+
+            # ── Panel superior fijo ──────────────────────────
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 110
+                padding: [24, 10, 24, 6]
+                spacing: 4
+                canvas.before:
+                    Color:
+                        rgba: 1, 1, 1, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                canvas.after:
+                    Color:
+                        rgba: 0.788, 0.016, 0.043, 0.18
+                    Rectangle:
+                        pos: self.x, self.y
+                        size: self.width, 2
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: 28
+                    spacing: 8
+                    Label:
+                        text: 'Salida:'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        size_hint_x: None
+                        width: 48
+                        halign: 'right'
+                        valign: 'middle'
+                        text_size: self.size
+                    Label:
+                        id: lbl_salida
+                        text: '—'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.106, 0.082, 0.071, 1
+                        halign: 'left'
+                        valign: 'middle'
+                        text_size: self.size
+                    PillButton:
+                        text: 'Cambiar'
+                        font_size: 11
+                        size_hint: None, None
+                        size: 80, 26
+                        bg_color: 0.106, 0.082, 0.071, 1
+                        pressed_color: 0.753, 0.227, 0.129, 1
+                        pill_radius: 6
+                        on_press: root.cambiar_carpeta_salida()
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: 28
+                    spacing: 8
+                    Label:
+                        text: 'Período:'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        size_hint_x: None
+                        width: 56
+                        halign: 'right'
+                        valign: 'middle'
+                        text_size: self.size
+                    TextInput:
+                        id: inp_periodo
+                        hint_text: 'AAAAMM'
+                        text: ''
+                        font_name: 'Jakarta'
+                        font_size: 13
+                        size_hint_x: None
+                        width: 100
+                        size_hint_y: None
+                        height: 28
+                        multiline: False
+                        foreground_color: 0.106, 0.082, 0.071, 1
+                        background_color: 0.984, 0.969, 0.945, 1
+                        background_normal: ''
+                        background_active: ''
+                        padding: [8, 4]
+                    Label:
+                        text: ''
+                        size_hint_x: 1
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: 26
+                    Label:
+                        id: lbl_estado
+                        text: ''
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        valign: 'middle'
+                        text_size: self.size
+
+            # ── Barra de tabs ────────────────────────────────
+            BoxLayout:
+                size_hint_y: None
+                height: 40
+                spacing: 2
+                padding: [16, 4, 16, 0]
+                canvas.before:
+                    Color:
+                        rgba: 0.984, 0.969, 0.945, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                TabButton:
+                    id: tab_tarifas
+                    text: 'Tarifas'
+                    is_active: True
+                    on_press: root.cambiar_tab('tarifas')
+                TabButton:
+                    id: tab_exportar
+                    text: 'Exportar'
+                    on_press: root.cambiar_tab('exportar')
+                Widget
+                PillButton:
+                    text: '✉  Correo'
+                    size_hint: None, None
+                    size: 110, 30
+                    bg_color: 0.106, 0.082, 0.071, 1
+                    pressed_color: 0.082, 0.063, 0.055, 1
+                    pill_radius: 8
+                    font_size: 11
+                    on_press: root.popup_config_email()
+
+            # ── Panel Tarifas ────────────────────────────────
+            BoxLayout:
+                id: panel_tarifas
+                orientation: 'vertical'
+                padding: [20, 12, 20, 8]
+                spacing: 0
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: 32
+                    padding: [12, 0]
+                    canvas.before:
+                        Color:
+                            rgba: 0.106, 0.082, 0.071, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+                    Label:
+                        text: 'USO / CATEGORIA'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        bold: True
+                        color: 1, 1, 1, 1
+                        size_hint_x: 0.30
+                        halign: 'left'
+                        valign: 'middle'
+                        text_size: self.size
+                    Label:
+                        text: 'VALOR'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        bold: True
+                        color: 1, 1, 1, 1
+                        size_hint_x: 0.14
+                        halign: 'center'
+                        valign: 'middle'
+                        text_size: self.size
+                    Label:
+                        text: 'SUB/CON %'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        bold: True
+                        color: 1, 1, 1, 1
+                        size_hint_x: 0.14
+                        halign: 'center'
+                        valign: 'middle'
+                        text_size: self.size
+                    Label:
+                        text: 'TARIFA MEDIA'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        bold: True
+                        color: 1, 1, 1, 1
+                        size_hint_x: 0.22
+                        halign: 'center'
+                        valign: 'middle'
+                        text_size: self.size
+                    Label:
+                        text: ''
+                        size_hint_x: 0.20
+
+                ScrollView:
+                    do_scroll_x: False
+                    BoxLayout:
+                        id: tabla_tarifas
+                        orientation: 'vertical'
+                        size_hint_y: None
+                        height: self.minimum_height
+
+            # ── Panel Exportar ───────────────────────────────
+            BoxLayout:
+                id: panel_exportar
+                orientation: 'vertical'
+                opacity: 0
+                disabled: True
+                size_hint_y: None
+                height: 0
+                padding: [28, 18, 28, 18]
+                spacing: 12
+
+                # Aviso informativo
+                BoxLayout:
+                    size_hint_y: None
+                    height: 42
+                    padding: [16, 0, 16, 0]
+                    canvas.before:
+                        Color:
+                            rgba: 0.984, 0.973, 0.961, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [8]
+                        Color:
+                            rgba: 0.788, 0.016, 0.043, 0.35
+                        Rectangle:
+                            pos: self.pos
+                            size: 4, self.height
+                    Label:
+                        text: 'Valida primero para verificar que los datos esten completos antes de exportar.'
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        valign: 'middle'
+                        text_size: self.size
+
+                # Tarjeta de resultados de validación
+                BoxLayout:
+                    size_hint_y: 1
+                    padding: [20, 14, 20, 14]
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
+                        Color:
+                            rgba: 0.906, 0.863, 0.812, 0.7
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, 10
+                            width: 1
+                    Label:
+                        id: lbl_validacion
+                        text: 'Presiona Validar antes de exportar'
+                        font_name: 'Jakarta'
+                        font_size: 13
+                        color: 0.549, 0.502, 0.467, 1
+                        halign: 'left'
+                        valign: 'top'
+                        text_size: self.size
+
+                # Estado de exportación
+                Label:
+                    id: lbl_export_estado
+                    text: ''
+                    font_name: 'Jakarta'
+                    font_size: 12
+                    color: 0.549, 0.502, 0.467, 1
+                    size_hint_y: None
+                    height: 24
+                    halign: 'left'
+                    valign: 'middle'
+                    text_size: self.size
+
+                # Botones de acción
+                BoxLayout:
+                    size_hint_y: None
+                    height: 52
+                    spacing: 14
+                    PillButton:
+                        text: 'Validar'
+                        font_size: 14
+                        bg_color: 0.106, 0.082, 0.071, 1
+                        pressed_color: 0.300, 0.200, 0.150, 1
+                        pill_radius: 10
+                        on_press: root.validar()
+                    PillButton:
+                        text: 'Exportar 5 archivos'
+                        font_size: 14
+                        bg_color: 0.788, 0.016, 0.043, 1
+                        pressed_color: 0.561, 0.012, 0.031, 1
+                        pill_radius: 10
+                        on_press: root.exportar()
+
+                Widget:
+
+# ── Gestión de Roles ──────────────────────────────────────────────────────────
+<RolesScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.918, 0.882, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    BoxLayout:
+        orientation: 'horizontal'
+
+        MenuLateral:
+            pantalla_actual: 'roles'
+            rol: app.user_rol
+
+        BoxLayout:
+            orientation: 'vertical'
+            padding: [28, 24]
+            spacing: 16
+
+            BoxLayout:
+                size_hint_y: None
+                height: 44
+                spacing: 12
+                Label:
+                    text: 'Gestión de Roles'
+                    font_name: 'Sora'
+                    font_size: 20
+                    bold: True
+                    color: 0.106, 0.082, 0.071, 1
+                    halign: 'left'
+                    valign: 'middle'
+                    text_size: self.size
+                PillButton:
+                    text: '+ Nuevo Rol'
+                    size_hint: None, None
+                    size: 148, 38
+                    bg_color: 0.106, 0.082, 0.071, 1
+                    pressed_color: 0.082, 0.063, 0.055, 1
+                    pill_radius: 10
+                    font_size: 13
+                    on_press: root.popup_nuevo_rol()
+
+            Label:
+                text: root.mensaje
+                font_name: 'Jakarta'
+                font_size: 12
+                color: 0.549, 0.502, 0.467, 1
+                size_hint_y: None
+                height: 20
+                halign: 'left'
+                text_size: self.size
+
+            TableHeader:
+                Label:
+                    text: 'Rol'
+                    size_hint_x: 0.35
+                    bold: True
+                    font_size: 13
+                    color: 0.906, 0.863, 0.812, 1
+                    halign: 'left'
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
+                Label:
+                    text: 'Usuarios asignados'
+                    size_hint_x: 0.25
+                    bold: True
+                    font_size: 13
+                    color: 0.906, 0.863, 0.812, 1
+                    halign: 'left'
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
+                Label:
+                    text: 'Acciones'
+                    size_hint_x: 0.40
+                    bold: True
+                    font_size: 13
+                    color: 0.906, 0.863, 0.812, 1
+                    halign: 'left'
+                    valign: 'middle'
+                    text_size: self.width - 8, self.height
+
+            ScrollView:
+                BoxLayout:
+                    id: lista_roles
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    spacing: 1
+                    height: self.minimum_height

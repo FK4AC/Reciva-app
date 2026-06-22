@@ -42,10 +42,11 @@ class FacturacionScreen(Screen):
     total_facturado     = StringProperty('—')
     total_recaudado     = StringProperty('—')
     deuda_periodo       = StringProperty('—')
+    recaudo_mes_cal     = StringProperty('—')
     info_lista          = StringProperty('')
     barrios_disponibles = ListProperty(['Todos'])
 
-    _vista_activa = 'pendientes'   # 'pendientes' | 'pagadas' | 'recaudos_mes'
+    _vista_activa = 'pendientes'   # 'pendientes'|'pagadas'|'recaudos_mes'|'por_estrato'|'por_barrio'
 
     _pendientes_cache = []
     _pendientes_vis   = []
@@ -53,6 +54,8 @@ class FacturacionScreen(Screen):
     _pagadas_vis      = []
     _recaudos_cache   = []
     _recaudos_vis     = []
+    _stats_estratos   = []
+    _stats_barrios    = []
 
     _pagina_actual = 0
     _cargando      = False
@@ -67,7 +70,8 @@ class FacturacionScreen(Screen):
     def _tarea_inicio(self):
         d = {'años': [], 'meses': [], 'año': None, 'mes': None,
              'fac': 0.0, 'rec': 0.0, 'estratos': [],
-             'pendientes': [], 'pagadas': [], 'recaudos_mes': [], 'error': None}
+             'pendientes': [], 'pagadas': [], 'recaudos_mes': [],
+             'stats_estratos': [], 'stats_barrios': [], 'error': None}
         conn = get_connection()
         if not conn:
             d['error'] = 'Sin conexión'
@@ -116,7 +120,8 @@ class FacturacionScreen(Screen):
     def _tarea_periodo(self, anno, mes):
         d = {'años': None, 'meses': None, 'año': anno, 'mes': mes,
              'fac': 0.0, 'rec': 0.0, 'estratos': [],
-             'pendientes': [], 'pagadas': [], 'recaudos_mes': [], 'error': None}
+             'pendientes': [], 'pagadas': [], 'recaudos_mes': [],
+             'stats_estratos': [], 'stats_barrios': [], 'error': None}
         conn = get_connection()
         if not conn:
             d['error'] = 'Sin conexión'
@@ -153,7 +158,7 @@ class FacturacionScreen(Screen):
         cursor.execute("""
             SELECT COALESCE(s.estrato, '—'), COUNT(*), SUM(f.valor_recibo)
             FROM facturas f
-            LEFT JOIN suscriptores s ON s.susccodi = f.susccodi
+            LEFT JOIN suscriptores s ON s.cuenta = f.susccodi
             WHERE f.anno=%s AND f.mes=%s
             GROUP BY s.estrato ORDER BY s.estrato
         """, (año, mes))
@@ -161,12 +166,12 @@ class FacturacionScreen(Screen):
 
         # Pendientes — facturas sin recaudo
         cursor.execute("""
-            SELECT f.cuenta_contrato,
+            SELECT COALESCE(s.cuenta, f.cuenta_contrato) AS cuenta,
                    COALESCE(s.nombre, CAST(f.cuenta_contrato AS CHAR)) AS nombre,
                    COALESCE(s.barrio, '—') AS barrio,
                    f.valor_recibo
             FROM facturas f
-            LEFT JOIN suscriptores s ON s.cuenta = f.cuenta_contrato
+            LEFT JOIN suscriptores s ON s.susccodi = f.cuenta_contrato
             WHERE f.anno=%s AND f.mes=%s
               AND NOT EXISTS (
                   SELECT 1 FROM recaudos r WHERE r.numero_factura = f.numero_factura
@@ -177,7 +182,7 @@ class FacturacionScreen(Screen):
 
         # Pagadas — con indicador de retraso
         cursor.execute("""
-            SELECT f.cuenta_contrato,
+            SELECT COALESCE(s.cuenta, f.cuenta_contrato) AS cuenta,
                    COALESCE(s.nombre, CAST(f.cuenta_contrato AS CHAR)) AS nombre,
                    COALESCE(s.barrio, '—') AS barrio,
                    f.valor_recibo,
@@ -187,7 +192,7 @@ class FacturacionScreen(Screen):
                    ) THEN 1 ELSE 0 END AS tarde
             FROM facturas f
             INNER JOIN recaudos r ON r.numero_factura = f.numero_factura
-            LEFT  JOIN suscriptores s ON s.cuenta = f.cuenta_contrato
+            LEFT  JOIN suscriptores s ON s.susccodi = f.cuenta_contrato
             WHERE f.anno=%s AND f.mes=%s
             ORDER BY tarde DESC, r.fecha_recaudo DESC
         """, (año, mes))
@@ -195,18 +200,68 @@ class FacturacionScreen(Screen):
 
         # Recaudos del mes — por fecha real de pago
         cursor.execute("""
-            SELECT r.cuenta_contrato,
+            SELECT COALESCE(s.cuenta, r.cuenta_contrato) AS cuenta,
                    COALESCE(s.nombre, CAST(r.cuenta_contrato AS CHAR)) AS nombre,
                    r.valor_recibo,
                    r.fecha_recaudo,
                    r.anno  AS año_factura,
                    r.mes  AS mes_factura
             FROM recaudos r
-            LEFT JOIN suscriptores s ON s.cuenta = r.cuenta_contrato
+            LEFT JOIN suscriptores s ON s.susccodi = r.cuenta_contrato
             WHERE YEAR(r.fecha_recaudo) = %s AND MONTH(r.fecha_recaudo) = %s
             ORDER BY r.fecha_recaudo DESC
         """, (int(año), int(mes)))
         d['recaudos_mes'] = cursor.fetchall()
+
+        # Análisis por estrato (tab "Por Estrato")
+        cursor.execute("""
+            SELECT
+                COALESCE(s.estrato, 'Sin estrato')   AS grupo,
+                COUNT(DISTINCT s.cuenta)             AS suscriptores,
+                COALESCE(SUM(fa.total_fac), 0)       AS facturado,
+                COALESCE(SUM(ra.total_rec), 0)       AS recaudado
+            FROM suscriptores s
+            LEFT JOIN (
+                SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
+                FROM facturas WHERE anno=%s AND mes=%s
+                GROUP BY cuenta_contrato
+            ) fa ON fa.cuenta_contrato = s.susccodi
+            LEFT JOIN (
+                SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
+                FROM recaudos r
+                INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                WHERE f.anno=%s AND f.mes=%s
+                GROUP BY f.cuenta_contrato
+            ) ra ON ra.cuenta_contrato = s.susccodi
+            GROUP BY s.estrato
+            ORDER BY CAST(s.estrato AS UNSIGNED), s.estrato
+        """, (año, mes, año, mes))
+        d['stats_estratos'] = cursor.fetchall()
+
+        # Análisis por barrio (tab "Por Barrio")
+        cursor.execute("""
+            SELECT
+                COALESCE(s.barrio, 'Sin barrio')     AS grupo,
+                COUNT(DISTINCT s.cuenta)             AS suscriptores,
+                COALESCE(SUM(fa.total_fac), 0)       AS facturado,
+                COALESCE(SUM(ra.total_rec), 0)       AS recaudado
+            FROM suscriptores s
+            LEFT JOIN (
+                SELECT cuenta_contrato, SUM(valor_recibo) AS total_fac
+                FROM facturas WHERE anno=%s AND mes=%s
+                GROUP BY cuenta_contrato
+            ) fa ON fa.cuenta_contrato = s.susccodi
+            LEFT JOIN (
+                SELECT f.cuenta_contrato, SUM(r.valor_recibo) AS total_rec
+                FROM recaudos r
+                INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                WHERE f.anno=%s AND f.mes=%s
+                GROUP BY f.cuenta_contrato
+            ) ra ON ra.cuenta_contrato = s.susccodi
+            GROUP BY s.barrio
+            ORDER BY s.barrio
+        """, (año, mes, año, mes))
+        d['stats_barrios'] = cursor.fetchall()
 
     # ------------------------------------------------------------------
     # Aplicar datos al UI
@@ -234,10 +289,14 @@ class FacturacionScreen(Screen):
         self.total_facturado = f'${d["fac"]:,.0f}'
         self.total_recaudado = f'${d["rec"]:,.0f}'
         self.deuda_periodo   = f'${max(0, d["fac"] - d["rec"]):,.0f}'
+        rec_cal = sum(float(r[2]) for r in d['recaudos_mes']) if d['recaudos_mes'] else 0.0
+        self.recaudo_mes_cal = f'${rec_cal:,.0f}'
 
         self._pendientes_cache = d['pendientes']
         self._pagadas_cache    = d['pagadas']
         self._recaudos_cache   = d['recaudos_mes']
+        self._stats_estratos   = d['stats_estratos']
+        self._stats_barrios    = d['stats_barrios']
 
         barrios = sorted({r[2] or '—' for r in d['pendientes']})
         self.barrios_disponibles = ['Todos'] + barrios
@@ -274,24 +333,34 @@ class FacturacionScreen(Screen):
             box_barrio.opacity     = 0
             box_barrio.disabled    = True
 
-        # Activar/desactivar tabs (TabButton.is_active maneja el estilo)
+        # Ocultar buscador para tabs de análisis
+        buscador_box = self.ids.buscador.parent
+        es_stats = vista in ('por_estrato', 'por_barrio')
+        buscador_box.opacity  = 0 if es_stats else 1
+        buscador_box.disabled = es_stats
+
         mapa = {
             'pendientes':   self.ids.tab_pendientes,
             'pagadas':      self.ids.tab_pagadas,
             'recaudos_mes': self.ids.tab_recaudos,
+            'por_estrato':  self.ids.tab_estrato,
+            'por_barrio':   self.ids.tab_barrio,
         }
         for k, btn in mapa.items():
             btn.is_active = (k == vista)
 
-        self._actualizar_cabecera()
-        self._aplicar_filtros()
+        if es_stats:
+            self._render_stats(vista)
+        else:
+            self._actualizar_cabecera()
+            self._aplicar_filtros()
 
     def _actualizar_cabecera(self):
         cab = self.ids.cabecera_lista
         cab.clear_widgets()
 
         def _lbl(txt, sx):
-            l = Label(text=txt, size_hint_x=sx, font_size=11, bold=True,
+            l = Label(text=txt, size_hint_x=sx, font_size=12, bold=True,
                       color=(0.906, 0.863, 0.812, 1),
                       halign='left', valign='middle')
             l.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0] - 4, v[1])))
@@ -310,6 +379,14 @@ class FacturacionScreen(Screen):
             _lbl('Pagó el', 0.14)
             _lbl('Estado',  0.23)
             _lbl('',        0.09)
+        elif self._vista_activa in ('por_estrato', 'por_barrio'):
+            nom = 'Estrato' if self._vista_activa == 'por_estrato' else 'Barrio'
+            _lbl(nom,            0.22)
+            _lbl('Suscriptores', 0.14)
+            _lbl('Facturado',    0.20)
+            _lbl('Recaudado',    0.20)
+            _lbl('Cartera',      0.14)
+            _lbl('% Cobro',      0.10)
         else:  # recaudos_mes
             _lbl('Cuenta',     0.13)
             _lbl('Nombre',     0.28)
@@ -334,6 +411,10 @@ class FacturacionScreen(Screen):
         self._aplicar_filtros()
 
     def _aplicar_filtros(self):
+        if self._vista_activa in ('por_estrato', 'por_barrio'):
+            self._render_stats(self._vista_activa)
+            return
+
         texto  = self.ids.buscador.text.strip().lower()
         barrio = self.ids.spinner_barrio.text
 
@@ -364,6 +445,8 @@ class FacturacionScreen(Screen):
             return self._pendientes_vis
         elif self._vista_activa == 'pagadas':
             return self._pagadas_vis
+        elif self._vista_activa in ('por_estrato', 'por_barrio'):
+            return []
         return self._recaudos_vis
 
     def pagina_anterior(self):
@@ -393,7 +476,7 @@ class FacturacionScreen(Screen):
                 (str(count),          TEXT_SEC),
                 (f'${float(total):,.0f}', TINTA),
             ]:
-                lbl = Label(text=val, font_size=12, color=col)
+                lbl = Label(text=val, font_size=13, color=col)
                 with lbl.canvas.before:
                     Color(*bg)
                     r = Rectangle(pos=lbl.pos, size=lbl.size)
@@ -437,7 +520,7 @@ class FacturacionScreen(Screen):
             fila.bind(size=lambda _, v, r=rect: setattr(r, 'size', v))
 
             def _lbl(txt, sx, col, bold=False):
-                l = Label(text=str(txt), size_hint_x=sx, font_size=12,
+                l = Label(text=str(txt), size_hint_x=sx, font_size=13,
                           color=col, bold=bold, halign='left', valign='middle')
                 l.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0] - 4, v[1])))
                 fila.add_widget(l)
@@ -492,6 +575,57 @@ class FacturacionScreen(Screen):
                 icon_text='○',
                 message='Sin facturas para este período',
                 subtitle='Consulta otro mes o cambia los filtros',
+            ))
+
+    def _render_stats(self, vista):
+        self._actualizar_cabecera()
+        lista = self.ids.lista_principal
+        lista.clear_widgets()
+
+        datos     = self._stats_estratos if vista == 'por_estrato' else self._stats_barrios
+        nom_grupo = 'estrato' if vista == 'por_estrato' else 'barrio'
+        nom_mes   = MESES.get(self.ids.spinner_mes.text, self.ids.spinner_mes.text)
+        año_txt   = self.ids.spinner_año.text
+
+        self.info_lista = f'{len(datos)} grupos'
+        self.mensaje    = f'{nom_mes} {año_txt} — Análisis por {nom_grupo}'
+
+        for i, row in enumerate(datos):
+            grupo, suscriptores, facturado, recaudado = row
+            facturado = float(facturado)
+            recaudado = float(recaudado)
+            cartera   = facturado - recaudado
+            pct       = (recaudado / facturado * 100) if facturado else 0.0
+
+            fila = BoxLayout(orientation='horizontal', size_hint_y=None, height=36, spacing=2)
+            bg   = CARD if i % 2 == 0 else STAGE
+            with fila.canvas.before:
+                Color(*bg)
+                rect = Rectangle(pos=fila.pos, size=fila.size)
+            fila.bind(pos=lambda _, v, r=rect: setattr(r, 'pos', v))
+            fila.bind(size=lambda _, v, r=rect: setattr(r, 'size', v))
+
+            def _s(txt, sx, col, bold=False):
+                l = Label(text=str(txt), size_hint_x=sx, font_size=13,
+                          color=col, bold=bold, halign='left', valign='middle')
+                l.bind(size=lambda inst, v: setattr(inst, 'text_size', (v[0] - 4, v[1])))
+                fila.add_widget(l)
+
+            pct_col = SUCCESS if pct >= 80 else WARNING if pct >= 50 else VERMILLON
+            _s(str(grupo),           0.22, TINTA,    bold=True)
+            _s(str(suscriptores),    0.14, TEXT_SEC)
+            _s(f'${facturado:,.0f}', 0.20, TINTA)
+            _s(f'${recaudado:,.0f}', 0.20, SUCCESS if recaudado >= facturado else TINTA)
+            _s(f'${cartera:,.0f}',   0.14, VERMILLON if cartera > 0 else TEXT_SEC)
+            _s(f'{pct:.1f}%',        0.10, pct_col,  bold=True)
+            lista.add_widget(fila)
+
+        if not datos:
+            from widgets.components import EmptyState
+            lista.add_widget(EmptyState(
+                icon_text='○',
+                message='Sin datos para este período',
+                subtitle='Consulta otro mes',
             ))
 
     def _ver_suscriptor(self, cuenta):
