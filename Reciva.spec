@@ -2,7 +2,7 @@
 # PyInstaller spec para Reciva — Kivy 2.x + Windows
 # Compilar con: pyinstaller Reciva.spec
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, collect_all
 
 # collect_all('kivy') falla porque kivy.garden es un namespace package
 # con __path__ personalizado que rompe pkgutil.iter_modules.
@@ -28,13 +28,19 @@ kivy_hiddenimports = (
     ]
 )
 
+# pandas, openpyxl y numpy requieren collect_all para incluir
+# sus data files, binaries y submodules dinamicos correctamente.
+pd_datas,   pd_bins,   pd_hidden   = collect_all('pandas')
+xl_datas,   xl_bins,   xl_hidden   = collect_all('openpyxl')
+np_datas,   np_bins,   np_hidden   = collect_all('numpy')
+
 block_cipher = None
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=kivy_binaries,
-    datas=kivy_datas + [
+    binaries=kivy_binaries + pd_bins + xl_bins + np_bins,
+    datas=kivy_datas + pd_datas + xl_datas + np_datas + [
         ('reciva.kv',      '.'),
         ('fonts',          'fonts'),
         ('logo_png',       'logo_png'),
@@ -44,7 +50,7 @@ a = Analysis(
         # estados_cuenta SI va: la app escribe PDFs ahi en runtime.
         ('estados_cuenta', 'estados_cuenta'),
     ],
-    hiddenimports=kivy_hiddenimports + [
+    hiddenimports=kivy_hiddenimports + pd_hidden + xl_hidden + np_hidden + [
         # Base de datos
         'pymysql',
         'pymysql.cursors',
@@ -69,11 +75,6 @@ a = Analysis(
         'email.mime.multipart',
         'email.mime.base',
         'email.encoders',
-        # Excel / CSV
-        'openpyxl',
-        'openpyxl.styles',
-        'pandas',
-        'pandas.io.formats.excel',
         # Pillow — requerido por ReportLab y Kivy (img_pil provider)
         'PIL',
         'PIL.Image',

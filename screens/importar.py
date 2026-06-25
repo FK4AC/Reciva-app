@@ -87,8 +87,12 @@ class ImportarScreen(Screen):
         overlay.show('Leyendo columnas…')
 
         def tarea():
-            from utils.importar import get_file_columns
-            ok, resultado = get_file_columns(filepath)
+            try:
+                from utils.importar import get_file_columns
+                ok, resultado = get_file_columns(filepath)
+            except Exception as e:
+                import traceback
+                ok, resultado = False, f'Error al leer archivo:\n{traceback.format_exc()}'
             Clock.schedule_once(
                 lambda _: self._on_columnas(ok, resultado, filepath, tipo), 0
             )
