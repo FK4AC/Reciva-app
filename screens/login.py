@@ -14,6 +14,9 @@ class LoginScreen(Screen):
     error_msg = StringProperty('')
 
     def on_enter(self):
+        Clock.schedule_once(self._check_sesion, 0)
+
+    def _check_sesion(self, *_):
         sesion = cargar_sesion()
         if sesion:
             overlay.show('Reanudando sesión…')

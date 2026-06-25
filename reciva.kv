@@ -3,6 +3,21 @@
 #  Paleta: vermellón #E94E2C · tinta #1B1512 · crema #F1EAE1
 # ============================================================
 
+<SplashScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.082, 0.063, 0.055, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    Image:
+        source: 'logo_png/05-logo-blanco.png'
+        size_hint: None, None
+        size: 260, 260
+        pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+        fit_mode: 'contain'
+        mipmap: True
+
 <SinConexionScreen>:
     canvas.before:
         Color:

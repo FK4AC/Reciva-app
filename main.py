@@ -1,7 +1,24 @@
+import sys
+import os
+
+from kivy.config import Config
+
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+
+Config.set('kivy', 'window_icon', os.path.join(BASE_DIR, 'logo_png', '08-app-icon.ico'))
+
+from kivy.core.window import Window
+Window.clearcolor = (0.082, 0.063, 0.055, 1)
+
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, FadeTransition
 from kivy.core.text import LabelBase
+from kivy.resources import resource_add_path
 from kivy.properties import StringProperty, BooleanProperty
+from kivy.clock import Clock
+
+resource_add_path(BASE_DIR)
+from screens.splash import SplashScreen
 from screens.login import LoginScreen
 from screens.dashboard import DashboardScreen
 from screens.importar import ImportarScreen
@@ -18,14 +35,14 @@ import widgets.components  # noqa: F401  (registra PillButton, AccentCard, Filte
 
 LabelBase.register(
     name='Sora',
-    fn_regular='fonts/Sora-SemiBold2.ttf',
-    fn_bold='fonts/Sora-Bold2.ttf',
+    fn_regular=os.path.join(BASE_DIR, 'fonts', 'Sora-SemiBold2.ttf'),
+    fn_bold=os.path.join(BASE_DIR, 'fonts', 'Sora-Bold2.ttf'),
 )
 LabelBase.register(
     name='Jakarta',
-    fn_regular='fonts/Jakarta-Regular.ttf',
-    fn_italic='fonts/Jakarta-Medium.ttf',
-    fn_bold='fonts/Jakarta-SemiBold.ttf',
+    fn_regular=os.path.join(BASE_DIR, 'fonts', 'Jakarta-Regular.ttf'),
+    fn_italic=os.path.join(BASE_DIR, 'fonts', 'Jakarta-Medium.ttf'),
+    fn_bold=os.path.join(BASE_DIR, 'fonts', 'Jakarta-SemiBold.ttf'),
 )
 
 
@@ -57,9 +74,15 @@ class RecivaApp(App):
         self.perm_usuarios     = permisos_dict.get('usuarios',     (False, False))[0]
         self.perm_roles        = permisos_dict.get('roles',        (False, False))[0]
 
+    def on_start(self):
+        def _primer_frame(*_):
+            Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'login'), 2.0)
+        Clock.schedule_once(_primer_frame, 0)
+
     def build(self):
         sm = ScreenManager(transition=FadeTransition(duration=0.15))
         sm.app = self
+        sm.add_widget(SplashScreen(name='splash'))
         sm.add_widget(LoginScreen(name='login'))
         sm.add_widget(DashboardScreen(name='dashboard'))
         sm.add_widget(ImportarScreen(name='importar'))

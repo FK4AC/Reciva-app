@@ -105,18 +105,39 @@ class VolcadoScreen(Screen):
         overlay.hide()
         if error:
             self.ids.lbl_estado.text = f'BD: {error}'
-        self.ids.lbl_salida.text = self._config.get('carpeta_salida', '') or '—'
+        carpeta = self._config.get('carpeta_salida', '').strip()
+        if not carpeta or not os.path.exists(carpeta):
+            carpeta = os.path.join(os.path.expanduser('~'), 'Documents')
+            self._config['carpeta_salida'] = carpeta
+        self.ids.lbl_salida.text = carpeta
 
         # Período: próximo mes por defecto
         hoy_aaaamm = periodo_actual()
         prox = periodo_siguiente(hoy_aaaamm)
         self.ids.inp_periodo.text = prox
 
-        # Inicializar panels con todas las propiedades correctas
+        # Envolver panels en FloatLayout para evitar cascada de layouts al cambiar tab
+        self._wrap_panels()
         self.cambiar_tab(self._tab_activa)
         self._construir_tabla_tarifas()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
+
+    def _wrap_panels(self):
+        from kivy.uix.floatlayout import FloatLayout
+        tar = self.ids.panel_tarifas
+        exp = self.ids.panel_exportar
+        parent = tar.parent
+        parent.remove_widget(tar)
+        parent.remove_widget(exp)
+        tar.size_hint = (1, 1)
+        tar.pos_hint  = {'x': 0, 'y': 0}
+        exp.size_hint = (1, 1)
+        exp.pos_hint  = {'x': 0, 'y': 0}
+        wrapper = FloatLayout(size_hint_y=1)
+        wrapper.add_widget(exp)
+        wrapper.add_widget(tar)
+        parent.add_widget(wrapper)
 
     def cambiar_tab(self, tab):
         self._tab_activa = tab
@@ -128,48 +149,40 @@ class VolcadoScreen(Screen):
             btn.is_active = (k == tab)
         for k, pan in panels.items():
             active = (k == tab)
-            pan.opacity     = 1 if active else 0
-            pan.disabled    = not active
-            pan.size_hint_y = 1 if active else None
-            if not active:
-                pan.height = 0
-        parent = self.ids.panel_tarifas.parent
-        if parent is not None:
-            parent.do_layout()
+            pan.opacity  = 1 if active else 0
+            pan.disabled = not active
 
     # ── Carpeta salida ────────────────────────────────────────────────────────
 
     def cambiar_carpeta_salida(self):
-        from kivy.uix.filechooser import FileChooserListView
-        chooser = FileChooserListView(dirselect=True, path=os.path.expanduser('~'))
-        content = BoxLayout(orientation='vertical', spacing=8, padding=8)
-        content.add_widget(chooser)
-        pie = BoxLayout(size_hint_y=None, height=44, spacing=10)
-        btn_ok  = PillButton(text='Seleccionar', bg_color=VERMILLON,
-                             pressed_color=LADRILLO, pill_radius=8, font_size=12)
-        btn_can = PillButton(text='Cancelar', bg_color=MUTED,
-                             pressed_color=TINTA, pill_radius=8, font_size=12)
-        pie.add_widget(btn_can)
-        pie.add_widget(btn_ok)
-        content.add_widget(pie)
-        pop = Popup(title='Carpeta de salida', content=content, size_hint=(0.7, 0.8))
+        import subprocess
+        inicial = self._config.get('carpeta_salida', '') or os.path.expanduser('~')
+        script = (
+            'Add-Type -AssemblyName System.Windows.Forms;'
+            '$d=New-Object System.Windows.Forms.FolderBrowserDialog;'
+            '$d.Description="Seleccionar carpeta de exportacion del volcado";'
+            f'$d.SelectedPath="{inicial}";'
+            '$d.ShowNewFolderButton=$true;'
+            'if($d.ShowDialog()-eq"OK"){{Write-Output $d.SelectedPath}}'
+        )
+        def _pick():
+            r = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                capture_output=True, text=True, encoding='utf-8',
+            )
+            carpeta = r.stdout.strip()
+            if carpeta and os.path.isdir(carpeta):
+                Clock.schedule_once(lambda *_: self._aplicar_carpeta(carpeta), 0)
 
-        def confirmar(_):
-            sel = chooser.selection
-            if not sel:
-                return
-            ruta = sel[0]
-            self.ids.lbl_salida.text = ruta
-            self._config['carpeta_salida'] = ruta
-            threading.Thread(
-                target=lambda: self._guardar_config_bg(ruta, self._config.get('email_destino', '')),
-                daemon=True,
-            ).start()
-            pop.dismiss()
+        threading.Thread(target=_pick, daemon=True).start()
 
-        btn_ok.bind(on_press=confirmar)
-        btn_can.bind(on_press=pop.dismiss)
-        pop.open()
+    def _aplicar_carpeta(self, carpeta):
+        self.ids.lbl_salida.text = carpeta
+        self._config['carpeta_salida'] = carpeta
+        threading.Thread(
+            target=lambda: self._guardar_config_bg(carpeta, self._config.get('email_destino', '')),
+            daemon=True,
+        ).start()
 
     def _guardar_config_bg(self, carpeta_salida, email_destino):
         conn = get_connection()
@@ -585,8 +598,10 @@ class VolcadoScreen(Screen):
             self.ids.lbl_export_estado.text = 'Período inválido (formato AAAAMM)'
             return
         salida = self._config.get('carpeta_salida', '').strip()
-        if not salida:
-            salida = os.path.join(os.path.expanduser('~'), 'Downloads')
+        if not salida or not os.path.exists(salida):
+            salida = os.path.join(os.path.expanduser('~'), 'Documents')
+            self._config['carpeta_salida'] = salida
+            self.ids.lbl_salida.text = salida
         self.ids.lbl_export_estado.text = 'Generando…'
         overlay.show('Generando volcado…')
         threading.Thread(
@@ -792,11 +807,33 @@ class VolcadoScreen(Screen):
             self._config['smtp_user']          = user
             self._config['smtp_password']       = pw
             self._config['smtp_destinatarios']  = dest
-            threading.Thread(
-                target=lambda: self._guardar_email_cfg_bg(user, pw, dest),
-                daemon=True,
-            ).start()
-            popup.dismiss()
+            lbl_err.color = MUTED
+            lbl_err.text  = 'Guardando…'
+            btn_ok.disabled = True
+
+            def _bg():
+                conn = get_connection()
+                if not conn:
+                    Clock.schedule_once(lambda *_: (
+                        setattr(lbl_err, 'color', DANGER),
+                        setattr(lbl_err, 'text', '⚠  Sin conexión — configuración no guardada en BD'),
+                        setattr(btn_ok, 'disabled', False),
+                    ), 0)
+                    return
+                try:
+                    guardar_email_config(conn, user, pw, dest)
+                    Clock.schedule_once(lambda *_: popup.dismiss(), 0)
+                except Exception as e:
+                    msg = f'⚠  Error al guardar: {e}'
+                    Clock.schedule_once(lambda *_, m=msg: (
+                        setattr(lbl_err, 'color', DANGER),
+                        setattr(lbl_err, 'text', m),
+                        setattr(btn_ok, 'disabled', False),
+                    ), 0)
+                finally:
+                    conn.close()
+
+            threading.Thread(target=_bg, daemon=True).start()
 
         btn_can = PillButton(text='Cancelar', bg_color=LINE, fg_color=TINTA,
                              pressed_color=STAGE, font_size=13, pill_radius=20,
@@ -812,14 +849,6 @@ class VolcadoScreen(Screen):
         btn_ok.bind(on_press=_guardar)
         content.add_widget(footer)
         popup.open()
-
-    def _guardar_email_cfg_bg(self, smtp_user, smtp_password, smtp_destinatarios):
-        conn = get_connection()
-        if conn:
-            try:
-                guardar_email_config(conn, smtp_user, smtp_password, smtp_destinatarios)
-            finally:
-                conn.close()
 
     def _popup_enviar(self, archivos, periodo):
         nombres = [os.path.basename(a) for a in archivos]

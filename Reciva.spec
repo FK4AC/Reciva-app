@@ -67,11 +67,25 @@ a = Analysis(
         'email.mime',
         'email.mime.text',
         'email.mime.multipart',
+        'email.mime.base',
+        'email.encoders',
         # Excel / CSV
         'openpyxl',
         'openpyxl.styles',
         'pandas',
         'pandas.io.formats.excel',
+        # Pillow — requerido por ReportLab y Kivy (img_pil provider)
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
+        'PIL.BmpImagePlugin',
+        'PIL.PngImagePlugin',
+        'PIL.JpegImagePlugin',
+        'kivy.core.image.img_pil',
+        # SSL para pymysql
+        'ssl',
+        '_ssl',
         # Stdlib usado explicitamente
         'hashlib',
         'threading',
@@ -89,7 +103,7 @@ a = Analysis(
         'scipy',
         'matplotlib',
         'matplotlib.backends',
-        'PIL',
+
         'IPython',
         'jupyter',
         'notebook',
