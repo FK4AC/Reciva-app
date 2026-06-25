@@ -44,17 +44,20 @@ class ImportarScreen(Screen):
 
     def seleccionar_archivo(self, tipo):
         def _abrir():
+            import subprocess
+            script = (
+                'Add-Type -AssemblyName System.Windows.Forms;'
+                '$d=New-Object System.Windows.Forms.OpenFileDialog;'
+                f'$d.Title="Seleccionar archivo — {tipo}";'
+                '$d.Filter="Excel / CSV (*.xlsx;*.xls;*.csv)|*.xlsx;*.xls;*.csv|Todos (*.*)|*.*";'
+                'if($d.ShowDialog()-eq"OK"){Write-Output $d.FileName}'
+            )
             try:
-                import tkinter as tk
-                from tkinter import filedialog
-                root = tk.Tk()
-                root.withdraw()
-                root.wm_attributes('-topmost', True)
-                archivo = filedialog.askopenfilename(
-                    title=f'Seleccionar archivo — {tipo}',
-                    filetypes=[('Excel / CSV', '*.xlsx *.xls *.csv'), ('Todos', '*.*')]
+                r = subprocess.run(
+                    ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                    capture_output=True, text=True, encoding='utf-8',
                 )
-                root.destroy()
+                archivo = r.stdout.strip()
             except Exception as e:
                 msg = f'Error al abrir selector: {e}'
                 Clock.schedule_once(
