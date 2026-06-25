@@ -2274,6 +2274,70 @@
                         valign: 'middle'
                         text_size: self.size
 
+                # Barrios excluidos del volcado
+                BoxLayout:
+                    size_hint_y: None
+                    height: 152
+                    orientation: 'vertical'
+                    spacing: 6
+                    BoxLayout:
+                        size_hint_y: None
+                        height: 18
+                        spacing: 10
+                        Label:
+                            text: 'BARRIOS EXCLUIDOS DEL VOLCADO'
+                            font_name: 'Jakarta'
+                            font_size: 10
+                            bold: True
+                            color: 0.549, 0.502, 0.467, 1
+                            size_hint_x: 1
+                            halign: 'left'
+                            valign: 'middle'
+                            text_size: self.size
+                        PillButton:
+                            text: 'Guardar'
+                            font_size: 10
+                            bg_color: 0.122, 0.533, 0.220, 1
+                            pressed_color: 0.09, 0.40, 0.16, 1
+                            pill_radius: 6
+                            size_hint_x: None
+                            width: 80
+                            on_press: root.guardar_barrios()
+                    BoxLayout:
+                        size_hint_y: None
+                        height: 110
+                        canvas.before:
+                            Color:
+                                rgba: 1, 1, 1, 1
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [8]
+                        TextInput:
+                            id: ti_barrios
+                            hint_text: 'Un barrio por línea…'
+                            font_name: 'Jakarta'
+                            font_size: 12
+                            multiline: True
+                            background_normal: ''
+                            background_active: ''
+                            background_color: 0, 0, 0, 0
+                            foreground_color: 0.106, 0.082, 0.071, 1
+                            cursor_color: 0.788, 0.016, 0.043, 1
+                            hint_text_color: 0.549, 0.502, 0.467, 1
+                            padding: [14, 10]
+                    Label:
+                        id: lbl_barrios_estado
+                        text: ''
+                        font_name: 'Jakarta'
+                        font_size: 11
+                        color: 0.549, 0.502, 0.467, 1
+                        size_hint_y: None
+                        height: 18
+                        halign: 'left'
+                        valign: 'middle'
+                        text_size: self.size
+
                 # Tarjeta de resultados de validación
                 BoxLayout:
                     size_hint_y: 1

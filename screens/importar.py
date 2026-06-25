@@ -43,19 +43,32 @@ class ImportarScreen(Screen):
     color_msg = ListProperty([0.2, 0.9, 0.4, 1])
 
     def seleccionar_archivo(self, tipo):
-        from plyer import filechooser
-        try:
-            archivos = filechooser.open_file(
-                title=f'Seleccionar archivo {tipo}',
-                filters=[('Excel / CSV', '*.xlsx', '*.xls', '*.csv')]
-            )
-            if archivos:
+        def _abrir():
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.wm_attributes('-topmost', True)
+                archivo = filedialog.askopenfilename(
+                    title=f'Seleccionar archivo — {tipo}',
+                    filetypes=[('Excel / CSV', '*.xlsx *.xls *.csv'), ('Todos', '*.*')]
+                )
+                root.destroy()
+            except Exception as e:
+                msg = f'Error al abrir selector: {e}'
+                Clock.schedule_once(
+                    lambda _, m=msg: setattr(self, 'mensaje', m), 0)
+                return
+            if archivo:
                 if tipo == 'catastro':
-                    self._iniciar_previsualizacion(archivos[0], tipo)
+                    Clock.schedule_once(
+                        lambda _: self._iniciar_previsualizacion(archivo, tipo), 0)
                 else:
-                    self._iniciar_mapeo(archivos[0], tipo)
-        except Exception as e:
-            self.mensaje = f'Error al abrir selector: {e}'
+                    Clock.schedule_once(
+                        lambda _: self._iniciar_mapeo(archivo, tipo), 0)
+
+        threading.Thread(target=_abrir, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Mapeo de columnas

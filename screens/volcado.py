@@ -19,6 +19,7 @@ from utils.volcado import (
     cargar_tarifas, guardar_tarifas,
     generar_volcado_bd, validar_volcado_bd,
     generar_xlsx_precios, nombre_mes, periodo_actual, periodo_siguiente,
+    guardar_barrios_excluidos,
 )
 from utils.email_smtp import enviar_volcado
 from theme import (TINTA, BG, STAGE, CARD, VERMILLON, LADRILLO,
@@ -110,34 +111,20 @@ class VolcadoScreen(Screen):
             carpeta = os.path.join(os.path.expanduser('~'), 'Documents')
             self._config['carpeta_salida'] = carpeta
         self.ids.lbl_salida.text = carpeta
+        try:
+            self.ids.ti_barrios.text = self._config.get('barrios_excluidos', '')
+        except Exception:
+            pass
 
         # Período: próximo mes por defecto
         hoy_aaaamm = periodo_actual()
         prox = periodo_siguiente(hoy_aaaamm)
         self.ids.inp_periodo.text = prox
 
-        # Envolver panels en FloatLayout para evitar cascada de layouts al cambiar tab
-        self._wrap_panels()
         self.cambiar_tab(self._tab_activa)
         self._construir_tabla_tarifas()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-
-    def _wrap_panels(self):
-        from kivy.uix.floatlayout import FloatLayout
-        tar = self.ids.panel_tarifas
-        exp = self.ids.panel_exportar
-        parent = tar.parent
-        parent.remove_widget(tar)
-        parent.remove_widget(exp)
-        tar.size_hint = (1, 1)
-        tar.pos_hint  = {'x': 0, 'y': 0}
-        exp.size_hint = (1, 1)
-        exp.pos_hint  = {'x': 0, 'y': 0}
-        wrapper = FloatLayout(size_hint_y=1)
-        wrapper.add_widget(exp)
-        wrapper.add_widget(tar)
-        parent.add_widget(wrapper)
 
     def cambiar_tab(self, tab):
         self._tab_activa = tab
@@ -149,8 +136,11 @@ class VolcadoScreen(Screen):
             btn.is_active = (k == tab)
         for k, pan in panels.items():
             active = (k == tab)
-            pan.opacity  = 1 if active else 0
-            pan.disabled = not active
+            pan.opacity     = 1 if active else 0
+            pan.disabled    = not active
+            pan.size_hint_y = 1 if active else None
+            if not active:
+                pan.height = 0
 
     # ── Carpeta salida ────────────────────────────────────────────────────────
 
@@ -183,6 +173,35 @@ class VolcadoScreen(Screen):
             target=lambda: self._guardar_config_bg(carpeta, self._config.get('email_destino', '')),
             daemon=True,
         ).start()
+
+    def guardar_barrios(self):
+        ti = getattr(self.ids, 'ti_barrios', None)
+        texto = ti.text if ti else ''
+        lbl = getattr(self.ids, 'lbl_barrios_estado', None)
+        if lbl:
+            lbl.text = 'Guardando…'
+            lbl.color = MUTED
+        def _set_lbl(text, color):
+            _lbl = getattr(self.ids, 'lbl_barrios_estado', None)
+            if _lbl:
+                _lbl.text = text
+                _lbl.color = color
+
+        def _bg():
+            conn = get_connection()
+            if not conn:
+                Clock.schedule_once(lambda *_: _set_lbl('Sin conexión', DANGER), 0)
+                return
+            try:
+                guardar_barrios_excluidos(conn, texto)
+                self._config['barrios_excluidos'] = texto
+                Clock.schedule_once(lambda *_: _set_lbl('Guardado ✓', SUCCESS), 0)
+            except Exception as e:
+                msg = f'Error: {e}'
+                Clock.schedule_once(lambda *_, m=msg: _set_lbl(m, DANGER), 0)
+            finally:
+                conn.close()
+        threading.Thread(target=_bg, daemon=True).start()
 
     def _guardar_config_bg(self, carpeta_salida, email_destino):
         conn = get_connection()
@@ -561,28 +580,55 @@ class VolcadoScreen(Screen):
         if len(periodo) != 6 or not periodo.isdigit():
             self.ids.lbl_validacion.text = 'Período inválido (formato AAAAMM)'
             return
+        ti = getattr(self.ids, 'ti_barrios', None)
+        barrios = ti.text if ti else ''
         self.ids.lbl_validacion.text = 'Validando…'
-        threading.Thread(target=lambda: self._tarea_validar(periodo), daemon=True).start()
+        threading.Thread(target=lambda: self._tarea_validar(periodo, barrios), daemon=True).start()
 
-    def _tarea_validar(self, periodo):
+    def _tarea_validar(self, periodo, barrios):
         conn = get_connection()
         if not conn:
             Clock.schedule_once(
                 lambda *_: setattr(self.ids.lbl_validacion, 'text', 'Sin conexión'), 0)
             return
         try:
-            errores = validar_volcado_bd(conn, self._tarifas, periodo)
-            # Contar suscriptores
+            errores = validar_volcado_bd(conn, self._tarifas, periodo, barrios)
+            excluidos_list = [b.strip() for b in barrios.splitlines() if b.strip()]
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL AND uso_volcado != ''")
-            total = cur.fetchone()[0]
-            cur.execute("SELECT uso_volcado, COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL GROUP BY uso_volcado ORDER BY 2 DESC")
-            dist = cur.fetchall()
+            # Total incluidos (con filtro de barrios)
+            if excluidos_list:
+                ph = ','.join(['%s'] * len(excluidos_list))
+                cur.execute(f"""
+                    SELECT COUNT(*) FROM suscriptores
+                    WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+                      AND (barrio IS NULL OR barrio NOT IN ({ph}))
+                """, excluidos_list)
+                total = cur.fetchone()[0]
+                cur.execute(f"""
+                    SELECT uso_volcado, COUNT(*) FROM suscriptores
+                    WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+                      AND (barrio IS NULL OR barrio NOT IN ({ph}))
+                    GROUP BY uso_volcado ORDER BY 2 DESC
+                """, excluidos_list)
+                dist = cur.fetchall()
+                cur.execute(f"""
+                    SELECT COUNT(*) FROM suscriptores
+                    WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+                      AND barrio IN ({ph})
+                """, excluidos_list)
+                n_excluidos = cur.fetchone()[0]
+            else:
+                cur.execute("SELECT COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL AND uso_volcado != ''")
+                total = cur.fetchone()[0]
+                cur.execute("SELECT uso_volcado, COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL GROUP BY uso_volcado ORDER BY 2 DESC")
+                dist = cur.fetchall()
+                n_excluidos = 0
             cur.close()
             if errores:
                 msg = f'{len(errores)} error(es):\n' + '\n'.join(f'  • {e}' for e in errores[:8])
             else:
-                lineas = [f'Sin errores  ✓   {total} suscriptores listos para {nombre_mes(periodo)}']
+                excl_txt = f'  ({n_excluidos} excluidos por barrio)' if n_excluidos else ''
+                lineas = [f'Sin errores  ✓   {total} suscriptores listos para {nombre_mes(periodo)}{excl_txt}']
                 for uso, cnt in dist:
                     lineas.append(f'  • {uso}: {cnt}')
                 msg = '\n'.join(lineas)
@@ -602,20 +648,22 @@ class VolcadoScreen(Screen):
             salida = os.path.join(os.path.expanduser('~'), 'Documents')
             self._config['carpeta_salida'] = salida
             self.ids.lbl_salida.text = salida
+        ti = getattr(self.ids, 'ti_barrios', None)
+        barrios = ti.text if ti else ''
         self.ids.lbl_export_estado.text = 'Generando…'
         overlay.show('Generando volcado…')
         threading.Thread(
-            target=lambda: self._tarea_exportar(periodo, salida), daemon=True,
+            target=lambda: self._tarea_exportar(periodo, salida, barrios), daemon=True,
         ).start()
 
-    def _tarea_exportar(self, periodo, salida):
+    def _tarea_exportar(self, periodo, salida, barrios):
         conn = get_connection()
         if not conn:
             Clock.schedule_once(
                 lambda *_: self._post_exportar('Sin conexión a BD', None, None), 0)
             return
         try:
-            totales, errores = generar_volcado_bd(conn, self._tarifas, salida, periodo)
+            totales, errores = generar_volcado_bd(conn, self._tarifas, salida, periodo, barrios)
             n_prin = totales.get('principal', 0)
             n_h1   = totales.get('hoja1', 0)
             msg = (f'5 archivos generados  •  {n_prin} principal + {n_h1} hoja1'

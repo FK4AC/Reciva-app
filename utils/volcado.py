@@ -222,12 +222,14 @@ def cargar_config(conn):
         _ensure_app_config(cur)
         cur.execute("""
             SELECT config_key, config_value FROM app_config
-            WHERE config_key IN ('smtp_user', 'smtp_password', 'smtp_destinatarios')
+            WHERE config_key IN ('smtp_user', 'smtp_password', 'smtp_destinatarios',
+                                 'barrios_excluidos')
         """)
         for k, v in cur.fetchall():
             cfg[k] = v or ''
     except Exception:
         pass
+    cfg.setdefault('barrios_excluidos', '')
     cur.close()
     return cfg
 
@@ -252,6 +254,17 @@ _CREATE_APP_CONFIG = """
 
 def _ensure_app_config(cur):
     cur.execute(_CREATE_APP_CONFIG)
+
+
+def guardar_barrios_excluidos(conn, texto):
+    cur = conn.cursor()
+    _ensure_app_config(cur)
+    cur.execute("""
+        INSERT INTO app_config (config_key, config_value) VALUES ('barrios_excluidos', %s)
+        ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)
+    """, (texto,))
+    conn.commit()
+    cur.close()
 
 
 def guardar_email_config(conn, smtp_user, smtp_password, smtp_destinatarios):
@@ -447,7 +460,7 @@ def _linea_fd(nic_str, xml):
     return cabecera + ' ' * relleno + xml
 
 
-def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida):
+def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida, barrios_excluidos=None):
     """
     Genera los 4 TXT del volcado directamente desde BD.
 
@@ -459,13 +472,25 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida):
 
     cur = conn.cursor()
 
+    excluidos = [b.strip() for b in (barrios_excluidos or '').splitlines() if b.strip()]
+
     # cuenta = NIC del usuario; susccodi = codigo AIR-E distinto que va en el volcado
-    cur.execute("""
-        SELECT cuenta, susccodi, lote, uso_volcado
-        FROM suscriptores
-        WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
-        ORDER BY cuenta
-    """)
+    if excluidos:
+        ph = ','.join(['%s'] * len(excluidos))
+        cur.execute(f"""
+            SELECT cuenta, susccodi, lote, uso_volcado
+            FROM suscriptores
+            WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+              AND (barrio IS NULL OR barrio NOT IN ({ph}))
+            ORDER BY cuenta
+        """, excluidos)
+    else:
+        cur.execute("""
+            SELECT cuenta, susccodi, lote, uso_volcado
+            FROM suscriptores
+            WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+            ORDER BY cuenta
+        """)
     suscriptores = cur.fetchall()
 
     # Histórico: últimos 6 períodos antes del periodo_salida
@@ -544,14 +569,25 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida):
     return totales, errores
 
 
-def validar_volcado_bd(conn, tarifas, periodo_salida):
+def validar_volcado_bd(conn, tarifas, periodo_salida, barrios_excluidos=None):
     """Valida sin escribir archivos. Retorna lista de errores."""
     errores = []
     cur = conn.cursor()
-    cur.execute("""
-        SELECT cuenta, uso_volcado FROM suscriptores
-        WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
-    """)
+
+    excluidos = [b.strip() for b in (barrios_excluidos or '').splitlines() if b.strip()]
+
+    if excluidos:
+        ph = ','.join(['%s'] * len(excluidos))
+        cur.execute(f"""
+            SELECT cuenta, uso_volcado FROM suscriptores
+            WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+              AND (barrio IS NULL OR barrio NOT IN ({ph}))
+        """, excluidos)
+    else:
+        cur.execute("""
+            SELECT cuenta, uso_volcado FROM suscriptores
+            WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+        """)
     rows = cur.fetchall()
     cur.close()
 
