@@ -156,11 +156,14 @@ class VolcadoScreen(Screen):
             'if($d.ShowDialog()-eq"OK"){{Write-Output $d.SelectedPath}}'
         )
         def _pick():
-            r = subprocess.run(
+            proc = subprocess.Popen(
                 ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                capture_output=True, text=True, encoding='utf-8',
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL, text=True, encoding='utf-8',
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
-            carpeta = r.stdout.strip()
+            stdout, _ = proc.communicate()
+            carpeta = (stdout or '').strip()
             if carpeta and os.path.isdir(carpeta):
                 Clock.schedule_once(lambda *_: self._aplicar_carpeta(carpeta), 0)
 

@@ -48,16 +48,22 @@ class ImportarScreen(Screen):
             script = (
                 'Add-Type -AssemblyName System.Windows.Forms;'
                 '$d=New-Object System.Windows.Forms.OpenFileDialog;'
-                f'$d.Title="Seleccionar archivo — {tipo}";'
+                f'$d.Title="Seleccionar archivo {tipo}";'
                 '$d.Filter="Excel / CSV (*.xlsx;*.xls;*.csv)|*.xlsx;*.xls;*.csv|Todos (*.*)|*.*";'
                 'if($d.ShowDialog()-eq"OK"){Write-Output $d.FileName}'
             )
             try:
-                r = subprocess.run(
+                proc = subprocess.Popen(
                     ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                    capture_output=True, text=True, encoding='utf-8',
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                    text=True,
+                    encoding='utf-8',
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                 )
-                archivo = r.stdout.strip()
+                stdout, _ = proc.communicate()
+                archivo = (stdout or '').strip()
             except Exception as e:
                 msg = f'Error al abrir selector: {e}'
                 Clock.schedule_once(
