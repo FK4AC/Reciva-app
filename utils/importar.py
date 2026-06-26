@@ -18,6 +18,19 @@ def _verificar_columnas(cols, requeridas):
     return None
 
 
+def _parse_fecha(val):
+    """Convierte un valor de fecha a date. Si ya es datetime/Timestamp lo usa
+    directamente para evitar que dayfirst=True invierta YYYY-MM-DD como YYYY-DD-MM."""
+    if val is None or (isinstance(val, float) and __import__('math').isnan(val)):
+        return None
+    if hasattr(val, 'date'):
+        return val.date()
+    try:
+        return pd.to_datetime(str(val), dayfirst=True).date()
+    except Exception:
+        return None
+
+
 def _read_file(filepath):
     """Lee Excel o CSV (|, ;, ,) y devuelve DataFrame con columnas normalizadas."""
     if filepath.lower().endswith('.csv'):
@@ -459,14 +472,8 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
                     omitidos += 1
                     continue
 
-                try:
-                    fecha_fac = pd.to_datetime(str(row.get('FECHA_FACTURACION', '')), dayfirst=True).date()
-                except Exception:
-                    fecha_fac = None
-                try:
-                    fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', '')), dayfirst=True).date()
-                except Exception:
-                    fecha_rec = None
+                fecha_fac = _parse_fecha(row.get('FECHA_FACTURACION'))
+                fecha_rec = _parse_fecha(row.get('FECHA_RECAUDO'))
 
                 numero_factura = row.get('NUMERO_FACTURA', None)
                 if numero_factura:
@@ -739,10 +746,7 @@ def previsualizar_recaudo(filepath, col_map=None):
                 continue
             total += 1
 
-            try:
-                fecha_rec = pd.to_datetime(str(row.get('FECHA_RECAUDO', '')), dayfirst=True).date()
-            except Exception:
-                fecha_rec = None
+            fecha_rec = _parse_fecha(row.get('FECHA_RECAUDO'))
 
             numero_factura = row.get('NUMERO_FACTURA', None)
             if numero_factura:
