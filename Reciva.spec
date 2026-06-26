@@ -28,19 +28,21 @@ kivy_hiddenimports = (
     ]
 )
 
-# pandas, openpyxl y numpy requieren collect_all para incluir
-# sus data files, binaries y submodules dinamicos correctamente.
+# Estas librerias tienen data files y submodules dinamicos que
+# collect_all incluye y que los hiddenimports manuales omiten.
 pd_datas,   pd_bins,   pd_hidden   = collect_all('pandas')
 xl_datas,   xl_bins,   xl_hidden   = collect_all('openpyxl')
 np_datas,   np_bins,   np_hidden   = collect_all('numpy')
+rl_datas,   rl_bins,   rl_hidden   = collect_all('reportlab')
+pil_datas,  pil_bins,  pil_hidden  = collect_all('PIL')
 
 block_cipher = None
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=kivy_binaries + pd_bins + xl_bins + np_bins,
-    datas=kivy_datas + pd_datas + xl_datas + np_datas + [
+    binaries=kivy_binaries + pd_bins + xl_bins + np_bins + rl_bins + pil_bins,
+    datas=kivy_datas + pd_datas + xl_datas + np_datas + rl_datas + pil_datas + [
         ('reciva.kv',      '.'),
         ('fonts',          'fonts'),
         ('logo_png',       'logo_png'),
@@ -50,39 +52,11 @@ a = Analysis(
         # estados_cuenta SI va: la app escribe PDFs ahi en runtime.
         ('estados_cuenta', 'estados_cuenta'),
     ],
-    hiddenimports=kivy_hiddenimports + pd_hidden + xl_hidden + np_hidden + [
+    hiddenimports=kivy_hiddenimports + pd_hidden + xl_hidden + np_hidden + rl_hidden + pil_hidden + [
         # Base de datos
         'pymysql',
         'pymysql.cursors',
-        # PDF
-        'reportlab',
-        'reportlab.pdfgen',
-        'reportlab.pdfgen.canvas',
-        'reportlab.lib',
-        'reportlab.lib.pagesizes',
-        'reportlab.lib.units',
-        'reportlab.lib.colors',
-        'reportlab.lib.styles',
-        'reportlab.pdfbase',
-        'reportlab.pdfbase.ttfonts',
-        'reportlab.pdfbase.pdfmetrics',
-        'reportlab.platypus',
-        # Email
-        'smtplib',
-        'email',
-        'email.mime',
-        'email.mime.text',
-        'email.mime.multipart',
-        'email.mime.base',
-        'email.encoders',
-        # Pillow — requerido por ReportLab y Kivy (img_pil provider)
-        'PIL',
-        'PIL.Image',
-        'PIL.ImageDraw',
-        'PIL.ImageFont',
-        'PIL.BmpImagePlugin',
-        'PIL.PngImagePlugin',
-        'PIL.JpegImagePlugin',
+        # Kivy PIL image provider (no incluido por collect_all('PIL'))
         'kivy.core.image.img_pil',
         # SSL para pymysql
         'ssl',
