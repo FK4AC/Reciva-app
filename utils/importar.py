@@ -498,13 +498,22 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
                     if numero_factura:
                         sin_factura += 1
 
+                # IMPORTE = valor real del abono parcial; VALOR_RECIBO = total del recibo
+                # (que puede agrupar varios abonos). Preferir IMPORTE cuando existe y es > 0.
+                try:
+                    _imp_raw = row.get('IMPORTE', None)
+                    importe = float(_imp_raw) if _imp_raw is not None and str(_imp_raw).strip() not in ('', 'nan', 'None') else 0.0
+                except Exception:
+                    importe = 0.0
+                valor = importe if importe > 0 else float(row.get('VALOR_RECIBO', 0) or 0)
+
                 para_insertar.append((
                     numero_factura,
                     susccodi,
                     int(float(str(row.get('SUSCCODI', 0) or 0))),
                     fecha_fac,
                     fecha_rec,
-                    float(row.get('VALOR_RECIBO', 0) or 0),
+                    valor,
                     año_rec,
                     mes_rec,
                 ))
