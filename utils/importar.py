@@ -19,10 +19,7 @@ def _verificar_columnas(cols, requeridas):
 
 
 def _parse_fecha(val):
-    """Convierte un valor de fecha a date.
-    - Timestamps de Excel: usa .date() directo (ya parseado, sin riesgo de inversion).
-    - Strings ISO (YYYY-MM-DD): parsea sin dayfirst para no invertir mes/dia.
-    - Strings DD/MM/YYYY: dayfirst=True como fallback."""
+    """Convierte un valor de fecha a date (sin hora)."""
     if val is None or (isinstance(val, float) and __import__('math').isnan(val)):
         return None
     if hasattr(val, 'date'):
@@ -34,6 +31,28 @@ def _parse_fecha(val):
         pass
     try:
         return pd.to_datetime(s, dayfirst=True).date()
+    except Exception:
+        return None
+
+
+def _parse_datetime(val):
+    """Convierte un valor de fecha/hora a datetime, preservando la hora si existe."""
+    if val is None or (isinstance(val, float) and __import__('math').isnan(val)):
+        return None
+    import datetime as _dt
+    if isinstance(val, _dt.datetime):
+        return val
+    if isinstance(val, _dt.date):
+        return _dt.datetime(val.year, val.month, val.day)
+    if hasattr(val, 'to_pydatetime'):
+        return val.to_pydatetime()
+    s = str(val).strip()
+    try:
+        return pd.to_datetime(s, dayfirst=False).to_pydatetime()
+    except Exception:
+        pass
+    try:
+        return pd.to_datetime(s, dayfirst=True).to_pydatetime()
     except Exception:
         return None
 
@@ -480,7 +499,7 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
                     continue
 
                 fecha_fac = _parse_fecha(row.get('FECHA_FACTURACION'))
-                fecha_rec = _parse_fecha(row.get('FECHA_RECAUDO'))
+                fecha_rec = _parse_datetime(row.get('FECHA_RECAUDO'))
 
                 numero_factura = row.get('NUMERO_FACTURA', None)
                 if numero_factura:
@@ -523,15 +542,80 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
         if not para_insertar:
             return True, f"Recaudo: sin registros nuevos ({omitidos} omitidos)"
 
-        # Dedup para registros sin numero_factura: el UNIQUE KEY ignora NULLs en MySQL/TiDB,
-        # así que INSERT IGNORE no detecta duplicados en esos casos. Se filtra manualmente.
-        sin_nf = [r for r in para_insertar if r[0] is None]
+        con_nf  = [r for r in para_insertar if r[0] is not None]
+        sin_nf  = [r for r in para_insertar if r[0] is None]
+        rechazados = 0
+
+        # ── Registros CON numero_factura ────────────────────────────────────
+        # 1) Dedup exacto: mismo (NF, fecha_recaudo datetime, valor) ya en DB
+        # 2) Cap: no aceptar si total_pagado + nuevo > valor_factura
+        if con_nf:
+            numeros = list({r[0] for r in con_nf})
+
+            # Valor de cada factura
+            cap_fac = {}
+            for i in range(0, len(numeros), _BATCH):
+                lote = numeros[i:i + _BATCH]
+                ph   = ', '.join(['%s'] * len(lote))
+                cursor.execute(
+                    f"SELECT numero_factura, valor_recibo FROM facturas "
+                    f"WHERE numero_factura IN ({ph})", lote
+                )
+                for nf, vr in cursor.fetchall():
+                    cap_fac[nf] = float(vr)
+
+            # Total ya pagado por NF en DB
+            ya_pagado = {}
+            for i in range(0, len(numeros), _BATCH):
+                lote = numeros[i:i + _BATCH]
+                ph   = ', '.join(['%s'] * len(lote))
+                cursor.execute(
+                    f"SELECT numero_factura, SUM(valor_recibo) FROM recaudos "
+                    f"WHERE numero_factura IN ({ph}) GROUP BY numero_factura", lote
+                )
+                for nf, total in cursor.fetchall():
+                    ya_pagado[nf] = float(total)
+
+            # Pagos exactos ya en DB (dedup por NF + datetime + valor)
+            existentes_nf = set()
+            for i in range(0, len(numeros), _BATCH):
+                lote = numeros[i:i + _BATCH]
+                ph   = ', '.join(['%s'] * len(lote))
+                cursor.execute(
+                    f"SELECT numero_factura, fecha_recaudo, valor_recibo FROM recaudos "
+                    f"WHERE numero_factura IN ({ph})", lote
+                )
+                for nf, fr, vr in cursor.fetchall():
+                    existentes_nf.add((nf, str(fr), float(vr or 0)))
+
+            filtrados_nf = []
+            acumulado    = {}
+            for r in con_nf:
+                nf, valor = r[0], r[5]
+                # Dedup exacto
+                fecha_str = str(r[4]) if r[4] else None
+                if (nf, fecha_str, valor) in existentes_nf:
+                    rechazados += 1
+                    continue
+                # Cap
+                limite = cap_fac.get(nf)
+                if limite is not None:
+                    total_actual = ya_pagado.get(nf, 0.0) + acumulado.get(nf, 0.0)
+                    if total_actual + valor > limite + 0.01:
+                        rechazados += 1
+                        continue
+                filtrados_nf.append(r)
+                acumulado[nf] = acumulado.get(nf, 0.0) + valor
+            con_nf = filtrados_nf
+
+        # ── Registros SIN numero_factura ─────────────────────────────────────
+        # Dedup por (cuenta_contrato, DATE(fecha_recaudo), valor)
         if sin_nf:
             cuentas_nulas = list({r[2] for r in sin_nf if r[2]})
             existentes_nulos = set()
             for i in range(0, len(cuentas_nulas), _BATCH):
                 lote = cuentas_nulas[i:i + _BATCH]
-                ph = ', '.join(['%s'] * len(lote))
+                ph   = ', '.join(['%s'] * len(lote))
                 cursor.execute(
                     f"SELECT cuenta_contrato, DATE(fecha_recaudo), valor_recibo "
                     f"FROM recaudos WHERE numero_factura IS NULL "
@@ -539,24 +623,27 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
                 )
                 for cc, fr, vr in cursor.fetchall():
                     existentes_nulos.add((int(cc or 0), str(fr), float(vr or 0)))
-            con_nf = [r for r in para_insertar if r[0] is not None]
-            filtrados = []
+            filtrados_sin = []
             for r in sin_nf:
-                fecha_str = r[4].isoformat() if r[4] else None
-                if (r[2], fecha_str, r[5]) not in existentes_nulos:
-                    filtrados.append(r)
-            para_insertar = con_nf + filtrados
+                fecha_date = r[4].date() if hasattr(r[4], 'date') else r[4]
+                key = (r[2], str(fecha_date), r[5])
+                if key not in existentes_nulos:
+                    filtrados_sin.append(r)
+                else:
+                    rechazados += 1
+            sin_nf = filtrados_sin
 
-        total_intentados = len(para_insertar)
-        _REC_IGNORE = _REC_PREFIX.replace('INSERT INTO recaudos', 'INSERT IGNORE INTO recaudos')
-        insertadas  = _bulk_exec(cursor, conn, _REC_IGNORE, _REC_PH, '', para_insertar)
-        duplicadas  = total_intentados - insertadas
+        para_insertar = con_nf + sin_nf
+        if not para_insertar:
+            return True, f"Recaudo: sin registros nuevos ({rechazados} ya existentes/cap)"
+
+        insertadas = _bulk_exec(cursor, conn, _REC_PREFIX, _REC_PH, '', para_insertar)
 
         partes = [f"Recaudo importado: {insertadas} registros"]
         if sin_factura:
             partes.append(f"{sin_factura} sin factura en DB (se usó período del archivo)")
-        if duplicadas:
-            partes.append(f"{duplicadas} duplicados omitidos")
+        if rechazados:
+            partes.append(f"{rechazados} omitidos (dup/cap)")
         return True, ', '.join(partes)
 
     except Exception as e:
