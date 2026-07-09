@@ -184,10 +184,11 @@ def setup_tablas(conn):
     except Exception:
         pass
 
-    # Columnas lote y uso_volcado en suscriptores (idempotente)
+    # Columnas lote, uso_volcado y excluir_volcado en suscriptores (idempotente)
     for ddl in [
-        "ALTER TABLE suscriptores ADD COLUMN lote        VARCHAR(10) NOT NULL DEFAULT 'principal'",
-        "ALTER TABLE suscriptores ADD COLUMN uso_volcado VARCHAR(50) DEFAULT NULL",
+        "ALTER TABLE suscriptores ADD COLUMN lote           VARCHAR(10) NOT NULL DEFAULT 'principal'",
+        "ALTER TABLE suscriptores ADD COLUMN uso_volcado    VARCHAR(50) DEFAULT NULL",
+        "ALTER TABLE suscriptores ADD COLUMN excluir_volcado TINYINT(1) NOT NULL DEFAULT 0",
     ]:
         try:
             cur.execute(ddl)
@@ -532,6 +533,7 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida,
             FROM suscriptores
             WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
               AND (barrio IS NULL OR barrio NOT IN ({ph}))
+              AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
             ORDER BY cuenta
         """, excluidos)
     else:
@@ -539,6 +541,7 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida,
             SELECT cuenta, susccodi, lote, uso_volcado
             FROM suscriptores
             WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+              AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
             ORDER BY cuenta
         """)
     suscriptores = cur.fetchall()
@@ -633,11 +636,13 @@ def validar_volcado_bd(conn, tarifas, periodo_salida, barrios_excluidos=None):
             SELECT cuenta, uso_volcado FROM suscriptores
             WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
               AND (barrio IS NULL OR barrio NOT IN ({ph}))
+              AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
         """, excluidos)
     else:
         cur.execute("""
             SELECT cuenta, uso_volcado FROM suscriptores
             WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+              AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
         """)
     rows = cur.fetchall()
     cur.close()

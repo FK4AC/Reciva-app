@@ -1,13 +1,13 @@
 [Setup]
 AppName=Reciva
-AppVersion=1.0.16
+AppVersion=1.0.21
 AppPublisher=INGESAM ASEO S.A.S E.S.P.
 AppPublisherURL=https://ingesam.com.co
 AppSupportURL=https://ingesam.com.co
 DefaultDirName={autopf}\Reciva
 DefaultGroupName=Reciva
 OutputDir=installer
-OutputBaseFilename=Reciva_Setup_v1.0.16
+OutputBaseFilename=Reciva_Setup_v1.0.21
 SetupIconFile=logo_png\08-app-icon.ico
 UninstallDisplayIcon={app}\Reciva.exe
 Compression=lzma2/ultra64

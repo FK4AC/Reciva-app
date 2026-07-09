@@ -595,12 +595,14 @@ class VolcadoBase(Screen):
                     SELECT COUNT(*) FROM suscriptores
                     WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
                       AND (barrio IS NULL OR barrio NOT IN ({ph}))
+                      AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
                 """, excluidos_list)
                 total = cur.fetchone()[0]
                 cur.execute(f"""
                     SELECT uso_volcado, COUNT(*) FROM suscriptores
                     WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
                       AND (barrio IS NULL OR barrio NOT IN ({ph}))
+                      AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
                     GROUP BY uso_volcado ORDER BY 2 DESC
                 """, excluidos_list)
                 dist = cur.fetchall()
@@ -611,9 +613,18 @@ class VolcadoBase(Screen):
                 """, excluidos_list)
                 n_excluidos = cur.fetchone()[0]
             else:
-                cur.execute("SELECT COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL AND uso_volcado != ''")
+                cur.execute("""
+                    SELECT COUNT(*) FROM suscriptores
+                    WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+                      AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
+                """)
                 total = cur.fetchone()[0]
-                cur.execute("SELECT uso_volcado, COUNT(*) FROM suscriptores WHERE uso_volcado IS NOT NULL GROUP BY uso_volcado ORDER BY 2 DESC")
+                cur.execute("""
+                    SELECT uso_volcado, COUNT(*) FROM suscriptores
+                    WHERE uso_volcado IS NOT NULL AND uso_volcado != ''
+                      AND (excluir_volcado = 0 OR excluir_volcado IS NULL)
+                    GROUP BY uso_volcado ORDER BY 2 DESC
+                """)
                 dist = cur.fetchall()
                 n_excluidos = 0
             cur.close()

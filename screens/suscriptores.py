@@ -741,6 +741,13 @@ class SuscriptoresScreen(Screen):
                             'uso_volcado', 'lote']
                     datos_actuales = {k: (str(v) if v is not None else '')
                                       for k, v in zip(keys, row)}
+                try:
+                    cur.execute("SELECT excluir_volcado FROM suscriptores WHERE cuenta=%s LIMIT 1",
+                                (cuenta_editar,))
+                    r = cur.fetchone()
+                    datos_actuales['excluir_volcado'] = str(r[0] or 0) if r else '0'
+                except Exception:
+                    datos_actuales['excluir_volcado'] = '0'
             finally:
                 cur.close()
                 conn.close()
@@ -807,6 +814,7 @@ class SuscriptoresScreen(Screen):
             return row, widget
 
         inputs = {}
+        flags  = {'excluir': datos_actuales.get('excluir_volcado', '0') not in ('', '0', 'None')}
 
         # ── Sección 1: Identificación ──
         if not es_edicion:
@@ -855,6 +863,32 @@ class SuscriptoresScreen(Screen):
             form_outer.add_widget(r)
             inputs[key] = w
 
+        # ── Toggle: excluir del volcado ──
+        excl_row = BoxLayout(size_hint_y=None, height=40, spacing=8, padding=[12, 2])
+        lbl_excl = Label(text='Excluir volcado', color=MUTED, font_size=11,
+                         size_hint_x=0.30, halign='right', valign='middle')
+        lbl_excl.bind(size=lambda w, _: setattr(w, 'text_size', (w.width, w.height)))
+        excl_row.add_widget(lbl_excl)
+
+        def _excl_color():
+            return DANGER if flags['excluir'] else SUCCESS
+
+        def _excl_text():
+            return 'Excluido ✕' if flags['excluir'] else 'Incluido ✓'
+
+        btn_excl = PillButton(text=_excl_text(), bg_color=_excl_color(),
+                              size_hint_y=None, height=34,
+                              font_size=12, pill_radius=8)
+
+        def _toggle_excl(_):
+            flags['excluir'] = not flags['excluir']
+            btn_excl.text     = _excl_text()
+            btn_excl.bg_color = _excl_color()
+
+        btn_excl.bind(on_press=_toggle_excl)
+        excl_row.add_widget(btn_excl)
+        form_outer.add_widget(excl_row)
+
         scroll = ScrollView(size_hint_y=1)
         scroll.add_widget(form_outer)
         content.add_widget(scroll)
@@ -899,6 +933,7 @@ class SuscriptoresScreen(Screen):
                 return
             cur = conn.cursor()
             try:
+                excluir_val = 1 if flags['excluir'] else 0
                 if es_edicion:
                     cur.execute("""
                         UPDATE suscriptores
@@ -918,6 +953,11 @@ class SuscriptoresScreen(Screen):
                         _val('lote') or 'principal',
                         cuenta_editar,
                     ))
+                    try:
+                        cur.execute("UPDATE suscriptores SET excluir_volcado=%s WHERE cuenta=%s",
+                                    (excluir_val, cuenta_editar))
+                    except Exception:
+                        pass
                 else:
                     cuenta_val = inputs['cuenta'].text.strip()
                     susccodi_val = inputs['susccodi'].text.strip()
@@ -944,6 +984,11 @@ class SuscriptoresScreen(Screen):
                         _val('uso_volcado'),
                         _val('lote') or 'principal',
                     ))
+                    try:
+                        cur.execute("UPDATE suscriptores SET excluir_volcado=%s WHERE cuenta=%s",
+                                    (excluir_val, int(cuenta_val)))
+                    except Exception:
+                        pass
                 conn.commit()
                 lbl_ok.text = 'Guardado correctamente'
                 lbl_err.text = ''
