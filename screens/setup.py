@@ -20,7 +20,6 @@ from kivy.uix.widget import Widget
 from theme import (TINTA, STAGE, CARD, VERMILLON, LADRILLO,
                    LINE, MUTED, SUCCESS, DANGER)
 from widgets.components import PillButton
-from utils.licencia import verificar_codigo, LicenciaError
 
 
 # ── Helpers de UI ─────────────────────────────────────────────────────────────
@@ -114,79 +113,58 @@ class _Paso(BoxLayout):
         return btn
 
 
-# ── Paso 1 — Codigo de activacion ────────────────────────────────────────────
+# ── Paso 1 — Conexion a BD ────────────────────────────────────────────────────
 
 class _Paso1(_Paso):
     def __init__(self, on_ok, **kw):
-        super().__init__('Activacion de Reciva',
-                         'Pega el codigo de activacion que te dio tu proveedor', **kw)
+        super().__init__('Conexion a base de datos',
+                         'Ingresa los datos del servidor TiDB / MySQL', **kw)
         self._on_ok = on_ok
 
-        self.body.add_widget(_lbl(
-            'El codigo contiene los datos de conexion cifrados. '
-            'Tiene aproximadamente 200 caracteres.',
-            size=12, color=MUTED, height=38,
-        ))
-        self.body.add_widget(Widget(size_hint_y=None, height=8))
+        # Fila host + puerto
+        row_hp = BoxLayout(size_hint_y=None, height=44, spacing=10)
+        wrap_h, self.ti_host = _field('Host', text='gateway01.us-east-1.prod.aws.tidbcloud.com')
+        wrap_p, self.ti_port = _field('Puerto', text='4000')
+        wrap_h.size_hint_x = 0.70
+        wrap_p.size_hint_x = 0.30
+        self.body.add_widget(_lbl('Host', size=11, color=MUTED, height=18))
+        self.body.add_widget(row_hp)
+        row_hp.add_widget(wrap_h)
+        row_hp.add_widget(wrap_p)
 
-        self.body.add_widget(_lbl('Codigo de activacion', size=11, color=MUTED, height=18))
-        wrap = BoxLayout(size_hint_y=None, height=90)
-        with wrap.canvas.before:
-            Color(1, 1, 1, 1)
-            bg = RoundedRectangle(pos=wrap.pos, size=wrap.size, radius=[8])
-            Color(*LINE)
-            bd = RoundedRectangle(pos=wrap.pos, size=wrap.size, radius=[8])
-        wrap.bind(
-            pos =lambda _, v, a=bg, b=bd: (setattr(a, 'pos', v), setattr(b, 'pos', v)),
-            size=lambda _, v, a=bg, b=bd: (setattr(a, 'size', v), setattr(b, 'size', v)),
-        )
-        self.ti_codigo = TextInput(
-            hint_text='gAAAAAB...  (pega aqui el codigo completo)',
-            multiline=True, font_name='Jakarta', font_size=12,
-            background_normal='', background_active='', background_color=(0, 0, 0, 0),
-            foreground_color=TINTA, cursor_color=VERMILLON,
-            hint_text_color=MUTED, padding=[14, 12],
-        )
-        wrap.add_widget(self.ti_codigo)
-        self.body.add_widget(wrap)
+        self._add_field('Base de datos',   'ti_db',   default='reciva_db')
+        self._add_field('Usuario',         'ti_user')
+        self._add_field('Contrasena',      'ti_pass', password=True)
 
         self.lbl_err = _lbl('', size=12, color=DANGER, height=22)
         self.body.add_widget(self.lbl_err)
         self.body.add_widget(Widget())
 
-        self.btn_ok = self._btn_next('Activar  ->', self._activar, width=160)
+        btn_test = self._btn_next('Probar conexion', self._probar, color=TINTA, width=160)
+        self.btn_ok = self._btn_next('Siguiente  ->', self._siguiente, width=160)
+        self.btn_ok.disabled = True
         self.footer.add_widget(Widget())
+        self.footer.add_widget(btn_test)
         self.footer.add_widget(self.btn_ok)
 
-    def _activar(self, *_):
-        codigo = self.ti_codigo.text.strip()
-        if not codigo:
-            self._err('Pega el codigo de activacion')
+    def _probar(self, *_):
+        host = self.ti_host.text.strip()
+        port = self.ti_port.text.strip()
+        name = self.ti_db.text.strip()
+        user = self.ti_user.text.strip()
+        pwd  = self.ti_pass.text.strip()
+        if not all([host, port, name, user]):
+            self._err('Completa todos los campos obligatorios')
             return
-        self.btn_ok.disabled = True
         self.lbl_err.color = MUTED
-        self.lbl_err.text = 'Verificando codigo...'
-        threading.Thread(target=self._tarea, args=(codigo,), daemon=True).start()
+        self.lbl_err.text  = 'Conectando...'
+        threading.Thread(
+            target=self._tarea_probar,
+            args=(host, int(port), name, user, pwd),
+            daemon=True,
+        ).start()
 
-    def _tarea(self, codigo):
-        try:
-            creds = verificar_codigo(codigo)
-        except LicenciaError as e:
-            Clock.schedule_once(lambda *_, m=str(e): self._err(m), 0)
-            return
-        except Exception as e:
-            Clock.schedule_once(lambda *_, m=str(e): self._err(f'Error inesperado: {m}'), 0)
-            return
-
-        host     = creds['host']
-        port     = int(creds['port'])
-        name     = creds['database']
-        user     = creds['user']
-        pwd      = creds['password']
-        cliente  = creds.get('cliente', '')
-
-        self.lbl_err.text = f'Codigo valido ({cliente}). Conectando...' if cliente else 'Codigo valido. Conectando...'
-
+    def _tarea_probar(self, host, port, name, user, pwd):
         try:
             conn = pymysql.connect(
                 host=host, port=port, user=user, password=pwd,
@@ -208,9 +186,16 @@ class _Paso1(_Paso):
             self._crear_tablas(conn2)
             conn2.close()
 
-            Clock.schedule_once(lambda *_: self._on_ok(host, port, name, user, pwd), 0)
+            def _ok(*_):
+                self.lbl_err.color = SUCCESS
+                self.lbl_err.text  = 'Conexion exitosa ✓'
+                self.btn_ok.disabled = False
+                self._host, self._port = host, port
+                self._name, self._user, self._pwd = name, user, pwd
+
+            Clock.schedule_once(_ok, 0)
         except Exception as e:
-            Clock.schedule_once(lambda *_, m=str(e): self._err(f'Conexion fallida: {m}'), 0)
+            Clock.schedule_once(lambda *_, m=str(e): self._err(f'Error: {m}'), 0)
 
     def _crear_tablas(self, conn):
         import sys
@@ -230,10 +215,13 @@ class _Paso1(_Paso):
         conn.commit()
         cur.close()
 
+    def _siguiente(self, *_):
+        self._on_ok(self._host, self._port, self._name, self._user, self._pwd)
+
     def _err(self, msg):
-        self.btn_ok.disabled = False
         self.lbl_err.color = DANGER
-        self.lbl_err.text = msg
+        self.lbl_err.text  = msg
+        self.btn_ok.disabled = True
 
 
 # ── Paso 2 — Empresa ──────────────────────────────────────────────────────────
