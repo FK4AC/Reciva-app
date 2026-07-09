@@ -30,7 +30,6 @@ from screens.usuarios import UsuariosScreen
 from screens.estadisticas import EstadisticasScreen
 from screens.volcado import VolcadoScreen
 from screens.roles import RolesScreen
-from screens.setup import SetupScreen
 from screens.cambiar_password import CambiarPasswordScreen
 from screens.menu import MenuLateral  # noqa: F401
 import widgets.components  # noqa: F401
@@ -113,20 +112,13 @@ class RecivaApp(App):
             pass
 
     def on_start(self):
-        import config
-        def _primer_frame(*_):
-            if config.es_primer_uso():
-                Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'setup'), 0.5)
-            else:
-                self._cargar_empresa()
-                Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'login'), 2.0)
-        Clock.schedule_once(_primer_frame, 0)
+        self._cargar_empresa()
+        Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'login'), 2.0)
 
     def build(self):
         sm = ScreenManager(transition=FadeTransition(duration=0.15))
         sm.app = self
         sm.add_widget(SplashScreen(name='splash'))
-        sm.add_widget(SetupScreen(name='setup'))
         sm.add_widget(LoginScreen(name='login'))
         sm.add_widget(CambiarPasswordScreen(name='cambiar_password'))
         sm.add_widget(DashboardScreen(name='dashboard'))
