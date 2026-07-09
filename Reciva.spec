@@ -47,9 +47,9 @@ a = Analysis(
         ('fonts',          'fonts'),
         ('logo_png',       'logo_png'),
         ('version.py',     '.'),
-        # config.py y theme.py NO van aqui: PyInstaller los compila
-        # automaticamente al ser modulos importados desde main.py.
-        # estados_cuenta SI va: la app escribe PDFs ahi en runtime.
+        # setup_db.sql lo usa el wizard de primer uso para crear tablas
+        ('setup_db.sql',   '.'),
+        # estados_cuenta: la app escribe PDFs ahi en runtime
         ('estados_cuenta', 'estados_cuenta'),
     ],
     hiddenimports=kivy_hiddenimports + pd_hidden + xl_hidden + np_hidden + rl_hidden + pil_hidden + [
@@ -66,6 +66,13 @@ a = Analysis(
         'threading',
         'csv',
         'json',
+        'configparser',
+        'zlib',
+        # Licencias cifradas
+        'cryptography',
+        'cryptography.fernet',
+        'cryptography.hazmat.primitives',
+        'cryptography.hazmat.backends',
     ],
     hookspath=[],
     hooksconfig={},

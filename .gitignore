@@ -12,6 +12,13 @@ dist/
 estados_cuenta/*.pdf
 reporte_comercial*.xlsx
 
+# Claves, logs y herramientas del desarrollador (no distribuir)
+licencia_key.env
+licencias_generadas.csv
+reciva_admin.db
+RecivAdmin.py
+generar_licencia.py
+
 # Unrelated projects / temp
 iglesia_app/
 presentacion_estratos.py

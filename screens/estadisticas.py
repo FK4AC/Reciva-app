@@ -118,7 +118,7 @@ class EstadisticasScreen(Screen):
     def _tarea_stats(self, anno, mes):
         d = {
             'año': anno, 'mes': mes,
-            'fac': 0.0, 'rec': 0.0,
+            'fac': 0.0, 'rec': 0.0, 'tarifa_total': 0.0,
             'estratos': [], 'barrios': [],
             'huerfanos_n': 0, 'huerfanos_sum': 0.0,
             'sin_conexion': False,
@@ -214,6 +214,18 @@ class EstadisticasScreen(Screen):
             d['huerfanos_n']   = int(hrow[0])
             d['huerfanos_sum'] = float(hrow[1])
 
+            # Tarifa AIR-E del período (siempre basada en recaudos con factura)
+            try:
+                cur.execute("""
+                    SELECT COALESCE(SUM(r.tarifa_aire), 0)
+                    FROM recaudos r
+                    INNER JOIN facturas f ON f.numero_factura = r.numero_factura
+                    WHERE f.anno=%s AND f.mes=%s
+                """, (anno, mes))
+                d['tarifa_total'] = float(cur.fetchone()[0])
+            except Exception:
+                d['tarifa_total'] = 0.0
+
         except Exception as e:
             print(f'Error estadísticas stats: {e}')
         finally:
@@ -245,6 +257,14 @@ class EstadisticasScreen(Screen):
         pct_col = SUCCESS if pct >= 80 else (WARNING if pct >= 50 else DANGER)
         self.ids.lbl_pct.color     = list(pct_col)
         self.ids.lbl_cartera.color = list(DANGER if cartera > 0 else SUCCESS)
+
+        tarifa = d.get('tarifa_total', 0.0)
+        neto   = max(0.0, rec - tarifa)
+        self.ids.lbl_tarifa_aire.text  = f'${tarifa:,.0f}'
+        self.ids.lbl_neto_ingesam.text = f'${neto:,.0f}'
+        box_t = self.ids.box_tarifa_est
+        box_t.height  = 82 if tarifa > 0 else 0
+        box_t.opacity = 1.0 if tarifa > 0 else 0.0
 
         n_h = d.get('huerfanos_n', 0)
         s_h = d.get('huerfanos_sum', 0.0)

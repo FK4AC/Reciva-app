@@ -43,8 +43,19 @@ class FacturacionScreen(Screen):
     total_recaudado     = StringProperty('—')
     deuda_periodo       = StringProperty('—')
     recaudo_mes_cal     = StringProperty('—')
+    costo_aire          = StringProperty('—')
+    neto_ingesam        = StringProperty('—')
+    detalle_tarifa      = StringProperty('')
     info_lista          = StringProperty('')
     barrios_disponibles = ListProperty(['Todos'])
+
+    _tarifa_rate    = 0.0   # tarifa AIR-E por factura del período (clave por anno_mes)
+    _num_facturas   = 0     # facturas del período consultado
+    _fac_actual     = 0.0   # total facturado del período
+    _rec_actual     = 0.0   # total recaudado del período
+    _cobrado_mes    = 0.0   # cobrado en el mes calendario (para neto a INGESAM)
+    _anno_actual    = ''
+    _mes_actual     = ''
 
     _vista_activa = 'pendientes'   # 'pendientes'|'pagadas'|'recaudos_mes'|'por_estrato'|'por_barrio'
 
@@ -69,7 +80,7 @@ class FacturacionScreen(Screen):
     # ------------------------------------------------------------------
     def _tarea_inicio(self):
         d = {'años': [], 'meses': [], 'año': None, 'mes': None,
-             'fac': 0.0, 'rec': 0.0, 'estratos': [],
+             'fac': 0.0, 'rec': 0.0, 'num_facturas': 0, 'tarifa_rate': 0.0,
              'pendientes': [], 'pagadas': [], 'recaudos_mes': [],
              'stats_estratos': [], 'stats_barrios': [], 'error': None}
         conn = get_connection()
@@ -119,7 +130,7 @@ class FacturacionScreen(Screen):
 
     def _tarea_periodo(self, anno, mes):
         d = {'años': None, 'meses': None, 'año': anno, 'mes': mes,
-             'fac': 0.0, 'rec': 0.0, 'estratos': [],
+             'fac': 0.0, 'rec': 0.0, 'num_facturas': 0, 'tarifa_rate': 0.0,
              'pendientes': [], 'pagadas': [], 'recaudos_mes': [],
              'stats_estratos': [], 'stats_barrios': [], 'error': None}
         conn = get_connection()
@@ -153,6 +164,25 @@ class FacturacionScreen(Screen):
             WHERE f.anno=%s AND f.mes=%s
         """, (año, mes))
         d['rec'] = float(cursor.fetchone()[0])
+
+        # Número de facturas del período (para calcular tarifa AIR-E × cantidad)
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM facturas WHERE anno=%s AND mes=%s",
+                (año, mes)
+            )
+            d['num_facturas'] = int(cursor.fetchone()[0])
+        except Exception:
+            d['num_facturas'] = 0
+
+        # Tarifa AIR-E guardada para este período específico
+        try:
+            from utils.config_sistema import get as _cfg_get
+            d['tarifa_rate'] = float(
+                _cfg_get(f'tarifa_aire_{año}_{mes}', '0') or '0'
+            )
+        except Exception:
+            d['tarifa_rate'] = 0.0
 
         # Por estrato (desde catastro, fuente autoritativa)
         cursor.execute("""
@@ -291,6 +321,20 @@ class FacturacionScreen(Screen):
         self.deuda_periodo   = f'${max(0, d["fac"] - d["rec"]):,.0f}'
         rec_cal = sum(float(r[2]) for r in d['recaudos_mes']) if d['recaudos_mes'] else 0.0
         self.recaudo_mes_cal = f'${rec_cal:,.0f}'
+
+        self._num_facturas = d.get('num_facturas', 0)
+        self._fac_actual   = d['fac']
+        self._rec_actual   = d['rec']
+        self._cobrado_mes  = rec_cal
+        self._anno_actual  = d['año']
+        self._mes_actual   = d['mes']
+        self._tarifa_rate  = d.get('tarifa_rate', 0.0)
+        self._recalcular_tarifa()
+        try:
+            self.ids.box_neto_ingesam.height  = 106
+            self.ids.box_neto_ingesam.opacity = 1.0
+        except Exception:
+            pass
 
         self._pendientes_cache = d['pendientes']
         self._pagadas_cache    = d['pagadas']
@@ -665,3 +709,176 @@ class FacturacionScreen(Screen):
             os.startfile(ruta)
         except Exception as e:
             self.mensaje = f'Error al exportar: {e}'
+
+    # ------------------------------------------------------------------
+    # Tarifa AIR-E — cálculo y edición
+    # ------------------------------------------------------------------
+    def _recalcular_tarifa(self):
+        subtotal     = self._tarifa_rate * self._num_facturas
+        tarifa_total = subtotal * 1.19
+        neto         = max(0.0, self._cobrado_mes - tarifa_total)
+        self.costo_aire   = f'${tarifa_total:,.0f}'
+        self.neto_ingesam = f'${neto:,.0f}'
+        if self._tarifa_rate > 0:
+            self.detalle_tarifa = (
+                f'${self._tarifa_rate:,.0f} × {self._num_facturas:,} fc. + IVA 19%'
+            )
+        else:
+            self.detalle_tarifa = f'{self._num_facturas:,} facturas · sin tarifa'
+
+    def editar_tarifa_aire(self):
+        from kivy.uix.popup import Popup
+        from kivy.uix.textinput import TextInput
+        from kivy.graphics import RoundedRectangle
+
+        AIRE_ORANGE = (0.820, 0.420, 0.098, 1)
+
+        # ── Contenedor raíz ─────────────────────────────────────────────
+        root = BoxLayout(orientation='vertical')
+        with root.canvas.before:
+            Color(*CARD)
+            rr_root = RoundedRectangle(pos=root.pos, size=root.size, radius=[12])
+        root.bind(pos=lambda _, v: setattr(rr_root, 'pos', v))
+        root.bind(size=lambda _, v: setattr(rr_root, 'size', v))
+
+        # ── Cabecera naranja ─────────────────────────────────────────────
+        header = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None, height=80,
+            padding=[24, 14],
+        )
+        with header.canvas.before:
+            Color(*AIRE_ORANGE)
+            rr_hdr = RoundedRectangle(
+                pos=header.pos, size=header.size,
+                radius=[12, 12, 0, 0],
+            )
+        header.bind(pos=lambda _, v: setattr(rr_hdr, 'pos', v))
+        header.bind(size=lambda _, v: setattr(rr_hdr, 'size', v))
+
+        header.add_widget(Label(
+            text='Tarifa AIR-E',
+            font_size=17, bold=True, color=(1, 1, 1, 1),
+            halign='center', valign='middle',
+            size_hint_y=None, height=28,
+        ))
+        mes_nombre = {
+            '1':'Enero','2':'Febrero','3':'Marzo','4':'Abril',
+            '5':'Mayo','6':'Junio','7':'Julio','8':'Agosto',
+            '9':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre',
+        }.get(str(self._mes_actual), self._mes_actual)
+        header.add_widget(Label(
+            text=f'{mes_nombre} {self._anno_actual}  ·  {self._num_facturas:,} facturas',
+            font_size=12, color=(1, 1, 1, 0.85),
+            halign='center', valign='middle',
+            size_hint_y=None, height=20,
+        ))
+        root.add_widget(header)
+
+        # ── Cuerpo ───────────────────────────────────────────────────────
+        body = BoxLayout(
+            orientation='vertical',
+            padding=[24, 18], spacing=10,
+        )
+
+        body.add_widget(Label(
+            text='Valor por factura ($)',
+            font_size=12, color=MUTED,
+            halign='left', size_hint_y=None, height=18,
+        ))
+
+        ti_val = str(int(self._tarifa_rate)
+                     if self._tarifa_rate == int(self._tarifa_rate)
+                     else self._tarifa_rate)
+        ti = TextInput(
+            text=ti_val,
+            multiline=False, font_size=22,
+            size_hint_y=None, height=52,
+            foreground_color=TINTA,
+            background_color=(0.996, 0.988, 0.976, 1),
+            background_normal='',
+            cursor_color=AIRE_ORANGE,
+            padding=[14, 12],
+            input_filter='float',
+            hint_text='0',
+        )
+        body.add_widget(ti)
+
+        # preview en tiempo real
+        lbl_preview = Label(
+            text='',
+            font_size=11, color=MUTED,
+            halign='center', size_hint_y=None, height=18,
+        )
+
+        def _actualizar_preview(inst, val):
+            try:
+                rate = float((val or '0').replace(',', '.'))
+                subtotal = rate * self._num_facturas
+                total = subtotal * 1.19
+                lbl_preview.text = (
+                    f'${rate:,.0f} × {self._num_facturas:,} × 1.19 = ${total:,.0f}'
+                )
+                lbl_preview.color = AIRE_ORANGE
+            except Exception:
+                lbl_preview.text = ''
+
+        ti.bind(text=_actualizar_preview)
+        _actualizar_preview(ti, ti.text)
+        body.add_widget(lbl_preview)
+
+        root.add_widget(body)
+
+        # ── Footer ───────────────────────────────────────────────────────
+        footer = BoxLayout(
+            size_hint_y=None, height=60,
+            spacing=12, padding=[24, 10],
+        )
+        with footer.canvas.before:
+            Color(*STAGE)
+            rr_ft = Rectangle(pos=footer.pos, size=footer.size)
+        footer.bind(pos=lambda _, v: setattr(rr_ft, 'pos', v))
+        footer.bind(size=lambda _, v: setattr(rr_ft, 'size', v))
+
+        popup = Popup(
+            title='', content=root,
+            size_hint=(None, None), size=(400, 280),
+            background_color=(0, 0, 0, 0),
+            separator_height=0,
+            overlay_color=(0.106, 0.082, 0.071, 0.45),
+        )
+
+        btn_cancelar = Button(
+            text='Cancelar',
+            background_normal='', background_color=CARD,
+            color=TINTA, font_size=13, bold=False,
+            size_hint_y=None, height=40,
+        )
+        btn_cancelar.bind(on_press=popup.dismiss)
+
+        def _guardar(_):
+            try:
+                rate = float(ti.text.replace(',', '.') or '0')
+            except Exception:
+                rate = 0.0
+            self._tarifa_rate = rate
+            try:
+                from utils.config_sistema import set as _cfg_set
+                _cfg_set(f'tarifa_aire_{self._anno_actual}_{self._mes_actual}', str(rate))
+            except Exception:
+                pass
+            popup.dismiss()
+            self._recalcular_tarifa()
+
+        btn_guardar = Button(
+            text='Guardar',
+            background_normal='', background_color=AIRE_ORANGE,
+            color=(1, 1, 1, 1), font_size=13, bold=True,
+            size_hint_y=None, height=40,
+        )
+        btn_guardar.bind(on_press=_guardar)
+
+        footer.add_widget(btn_cancelar)
+        footer.add_widget(btn_guardar)
+        root.add_widget(footer)
+        popup.open()

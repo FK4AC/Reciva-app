@@ -135,10 +135,22 @@ def setup_tablas(conn):
         CREATE TABLE IF NOT EXISTS volcado_config (
             id             INT NOT NULL DEFAULT 1 PRIMARY KEY,
             carpeta_salida VARCHAR(500) DEFAULT '',
-            email_destino  VARCHAR(200) DEFAULT ''
+            email_destino  VARCHAR(200) DEFAULT '',
+            sufijo         VARCHAR(20)  DEFAULT '1261',
+            convenio       VARCHAR(20)  DEFAULT '2087'
         )
     """)
     cur.execute("INSERT IGNORE INTO volcado_config (id) VALUES (1)")
+
+    # Columnas sufijo/convenio para instalaciones antiguas (idempotente)
+    for _ddl in [
+        "ALTER TABLE volcado_config ADD COLUMN sufijo   VARCHAR(20) DEFAULT '1261'",
+        "ALTER TABLE volcado_config ADD COLUMN convenio VARCHAR(20) DEFAULT '2087'",
+    ]:
+        try:
+            cur.execute(_ddl)
+        except Exception:
+            pass
 
     # Tabla clave-valor para configuración global (SMTP, etc.)
     cur.execute("""
@@ -211,13 +223,20 @@ def setup_tablas(conn):
 
 def cargar_config(conn):
     cur = conn.cursor()
-    cur.execute("SELECT carpeta_salida, email_destino FROM volcado_config WHERE id=1")
+    cur.execute(
+        "SELECT carpeta_salida, email_destino, "
+        "COALESCE(sufijo,'1261'), COALESCE(convenio,'2087') "
+        "FROM volcado_config WHERE id=1"
+    )
     row = cur.fetchone()
     cfg = {'carpeta_salida': '', 'email_destino': '',
+           'sufijo': '1261', 'convenio': '2087',
            'smtp_user': '', 'smtp_password': '', 'smtp_destinatarios': ''}
     if row:
         cfg['carpeta_salida'] = row[0] or ''
         cfg['email_destino']  = row[1] or ''
+        cfg['sufijo']         = row[2] or '1261'
+        cfg['convenio']       = row[3] or '2087'
     try:
         _ensure_app_config(cur)
         cur.execute("""
@@ -234,13 +253,23 @@ def cargar_config(conn):
     return cfg
 
 
-def guardar_config(conn, carpeta_salida, email_destino):
+def guardar_config(conn, carpeta_salida, email_destino,
+                   sufijo=None, convenio=None):
     cur = conn.cursor()
-    cur.execute(
-        "UPDATE volcado_config SET carpeta_salida=%s, email_destino=%s WHERE id=1",
-        (carpeta_salida, email_destino),
-    )
-    conn.commit()
+    sets = []
+    vals = []
+    if carpeta_salida is not None:
+        sets.append("carpeta_salida=%s"); vals.append(carpeta_salida)
+    if email_destino is not None:
+        sets.append("email_destino=%s");  vals.append(email_destino)
+    if sufijo is not None:
+        sets.append("sufijo=%s");         vals.append(sufijo)
+    if convenio is not None:
+        sets.append("convenio=%s");       vals.append(convenio)
+    if sets:
+        vals.append(1)
+        cur.execute(f"UPDATE volcado_config SET {', '.join(sets)} WHERE id=%s", vals)
+        conn.commit()
     cur.close()
 
 
@@ -389,15 +418,24 @@ def _co_fmt(v):
     return s
 
 
-def _xml_suscriptor(uso, valor, hist6, periodo_texto, t):
+def _xml_suscriptor(uso, valor, hist6, periodo_texto, t,
+                    empresa_xml=None, nit_xml=None):
     """Genera el bloque XML completo para una línea FD."""
+    if empresa_xml is None:
+        try:
+            from utils.config_sistema import get as _cs_get
+            empresa_xml = _cs_get('empresa_nombre', 'INGESAM.ASEO.S.A.S.E.S.P').upper().replace(' ', '.')
+            nit_xml     = _cs_get('empresa_nit', '900920770-5')
+        except Exception:
+            empresa_xml = 'INGESAM.ASEO.S.A.S.E.S.P'
+            nit_xml     = '900920770-5'
     total_fmt = _co_fmt(valor)
     h = [_co_fmt(v) for v in hist6]
     return (
         '<INFO_ASEO>'
         '<INFO_EMPRESA>'
-        '<EMPRESA>INGESAM.ASEO.S.A.S.E.S.P</EMPRESA>'
-        '<NIT>900920770-5</NIT>'
+        f'<EMPRESA>{empresa_xml}</EMPRESA>'
+        f'<NIT>{nit_xml}</NIT>'
         '<FRECUENCIA_BARRIDOS_POR_SEMANA>1</FRECUENCIA_BARRIDOS_POR_SEMANA>'
         '<FRECUENCIA_RECOLECCION_POR_SEMANA>2</FRECUENCIA_RECOLECCION_POR_SEMANA>'
         f'<USO>{uso}</USO>'
@@ -441,8 +479,8 @@ def _xml_suscriptor(uso, valor, hist6, periodo_texto, t):
     )
 
 
-def _linea_fc(nic_str, valor, periodo):
-    id_completo = nic_str + _SUFIJO
+def _linea_fc(nic_str, valor, periodo, sufijo=None):
+    id_completo = nic_str + (sufijo or _SUFIJO)
     campo = f'{valor * 100}DB'
     linea = 'FC' + id_completo.rjust(_FIN_ID_FC - 2)
     linea = linea + campo.rjust(_FIN_VALOR_FC - len(linea))
@@ -460,7 +498,18 @@ def _linea_fd(nic_str, xml):
     return cabecera + ' ' * relleno + xml
 
 
-def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida, barrios_excluidos=None):
+def _get_empresa_convenio(cfg: dict):
+    """Devuelve (empresa_tag, convenio) desde config o defaults INGESAM."""
+    from utils.config_sistema import get as _cs_get
+    empresa = _cs_get('empresa_nombre', 'INGESAM ASEO S.A.S E.S.P.')
+    # Nombre corto para nombres de archivo: sin espacios ni caracteres especiales
+    empresa_tag = empresa.upper().split()[0] if empresa.strip() else 'EMPRESA'
+    convenio = cfg.get('convenio', _CONVENIO)
+    return empresa_tag, convenio
+
+
+def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida,
+                       barrios_excluidos=None, cfg: dict = None):
     """
     Genera los 4 TXT del volcado directamente desde BD.
 
@@ -469,6 +518,7 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida, barrios_ex
     """
     os.makedirs(carpeta_salida, exist_ok=True)
     periodo_texto = MESES_TEXTO[int(periodo_salida[4:]) - 1] + ' ' + periodo_salida[:4]
+    sufijo_uso = (cfg or {}).get('sufijo', _SUFIJO)
 
     cur = conn.cursor()
 
@@ -537,7 +587,7 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida, barrios_ex
         nic_str = str(int(susccodi))  # codigo AIR-E que va en la linea FC
         try:
             xml = _xml_suscriptor(uso, valor, hist6, periodo_texto, t)
-            fc  = _linea_fc(nic_str, valor, periodo_salida)
+            fc  = _linea_fc(nic_str, valor, periodo_salida, sufijo=sufijo_uso)
             fd  = _linea_fd(nic_str, xml)
         except Exception as e:
             errores.append(str(e))
@@ -548,11 +598,12 @@ def generar_volcado_bd(conn, tarifas, carpeta_salida, periodo_salida, barrios_ex
 
     # Escribir archivos
     p = periodo_salida
+    empresa_tag, convenio_tag = _get_empresa_convenio(cfg or {})
     nombres = {
-        'principal': (f'INGESAM_VOLCADO_{_CONVENIO}_{p}.txt',
-                      f'INFO_ADICIONAL_INGESAM_{_CONVENIO}_{p}.txt'),
-        'hoja1':     (f'Hoja1_INGESAM_VOLCADO_{_CONVENIO}_{p}.txt',
-                      f'Hoja1_INFO_ADICIONAL_INGESAM_{_CONVENIO}_{p}.txt'),
+        'principal': (f'{empresa_tag}_VOLCADO_{convenio_tag}_{p}.txt',
+                      f'INFO_ADICIONAL_{empresa_tag}_{convenio_tag}_{p}.txt'),
+        'hoja1':     (f'Hoja1_{empresa_tag}_VOLCADO_{convenio_tag}_{p}.txt',
+                      f'Hoja1_INFO_ADICIONAL_{empresa_tag}_{convenio_tag}_{p}.txt'),
     }
     totales = {}
     for lote, (fcs, fds) in lotes.items():
@@ -643,8 +694,16 @@ def importar_catastro(conn, ruta_xlsx):
     return res
 
 
-def generar_xlsx_precios(tarifas, output_dir):
+def generar_xlsx_precios(tarifas, output_dir, cfg: dict = None):
     os.makedirs(output_dir, exist_ok=True)
+    try:
+        from utils.config_sistema import get as _cs_get
+        empresa_tag = _cs_get('empresa_nombre', 'INGESAM').upper().split()[0]
+        nit_tag     = _cs_get('empresa_nit', '')
+    except Exception:
+        empresa_tag = 'INGESAM'
+        nit_tag     = ''
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Hoja1'
@@ -654,7 +713,7 @@ def generar_xlsx_precios(tarifas, output_dir):
         if uso not in tarifas:
             continue
         precio = tarifas[uso].get('precio_xlsx') or tarifas[uso]['valor']
-        ws.append(['INGESAM', 'ASEO', 'LA GUAJIRA', 'HATONUEVO', 'HATONUEVO',
+        ws.append([empresa_tag, 'ASEO', '', '', '',
                    _CATEGORIA.get(uso, ''), uso, float(precio)])
     ruta = os.path.join(output_dir, 'TABLA_PRECIOS_ASEO.xlsx')
     wb.save(ruta)

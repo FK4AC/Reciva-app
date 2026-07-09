@@ -435,12 +435,12 @@ def importar_facturacion(filepath, modo='nuevo', col_map=None):
 _REC_PREFIX = """
     INSERT INTO recaudos
     (numero_factura, susccodi, cuenta_contrato, fecha_facturacion,
-     fecha_recaudo, valor_recibo, anno, mes)
+     fecha_recaudo, valor_recibo, anno, mes, tarifa_aire)
     VALUES """
-_REC_PH = "(%s,%s,%s,%s,%s,%s,%s,%s)"
+_REC_PH = "(%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 
 
-def importar_recaudo(filepath, modo='nuevo', col_map=None):
+def importar_recaudo(filepath, modo='nuevo', col_map=None, tarifa_aire=0.0):
     try:
         df = _read_file(filepath)
         df = _apply_col_map(df, col_map)
@@ -535,6 +535,7 @@ def importar_recaudo(filepath, modo='nuevo', col_map=None):
                     valor,
                     año_rec,
                     mes_rec,
+                    tarifa_aire,
                 ))
             except Exception:
                 omitidos += 1

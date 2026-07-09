@@ -30,8 +30,10 @@ from screens.usuarios import UsuariosScreen
 from screens.estadisticas import EstadisticasScreen
 from screens.volcado import VolcadoScreen
 from screens.roles import RolesScreen
-from screens.menu import MenuLateral  # noqa: F401  (registra el widget para el kv)
-import widgets.components  # noqa: F401  (registra PillButton, AccentCard, FilterPill, TabButton…)
+from screens.setup import SetupScreen
+from screens.cambiar_password import CambiarPasswordScreen
+from screens.menu import MenuLateral  # noqa: F401
+import widgets.components  # noqa: F401
 
 LabelBase.register(
     name='Sora',
@@ -50,20 +52,28 @@ class RecivaApp(App):
     current_user   = None
     user_rol       = StringProperty('operador')
     usuario_nombre = StringProperty('')
+    empresa_nombre = StringProperty('Reciva')
 
-    # Permisos por pantalla — actualizados al hacer login
-    perm_dashboard    = BooleanProperty(False)
-    perm_suscriptores = BooleanProperty(False)
-    perm_facturacion  = BooleanProperty(False)
-    perm_tickets      = BooleanProperty(False)
-    perm_importar     = BooleanProperty(False)
-    perm_estadisticas = BooleanProperty(False)
-    perm_volcado      = BooleanProperty(False)
-    perm_usuarios     = BooleanProperty(False)
-    perm_roles        = BooleanProperty(False)
+    # Etiquetas configurables por cliente
+    label_clientes   = StringProperty('Clientes')
+    label_cobros     = StringProperty('Cobros')
+    label_pagos      = StringProperty('Pagos')
+    label_soporte    = StringProperty('Soporte')
+    label_id_cliente = StringProperty('Código')
+
+    # Permisos por pantalla
+    perm_dashboard      = BooleanProperty(False)
+    perm_suscriptores   = BooleanProperty(False)
+    perm_facturacion    = BooleanProperty(False)
+    perm_tickets        = BooleanProperty(False)
+    perm_importar       = BooleanProperty(False)
+    perm_estadisticas   = BooleanProperty(False)
+    perm_volcado        = BooleanProperty(False)
+    perm_usuarios       = BooleanProperty(False)
+    perm_roles          = BooleanProperty(False)
+    perm_configuracion  = BooleanProperty(False)
 
     def aplicar_permisos(self, permisos_dict):
-        """Recibe dict pantalla → (puede_ver, puede_editar) y actualiza las properties."""
         self.perm_dashboard    = permisos_dict.get('dashboard',    (False, False))[0]
         self.perm_suscriptores = permisos_dict.get('suscriptores', (False, False))[0]
         self.perm_facturacion  = permisos_dict.get('facturacion',  (False, False))[0]
@@ -73,17 +83,52 @@ class RecivaApp(App):
         self.perm_volcado      = permisos_dict.get('volcado',      (False, False))[0]
         self.perm_usuarios     = permisos_dict.get('usuarios',     (False, False))[0]
         self.perm_roles        = permisos_dict.get('roles',        (False, False))[0]
+        # Configuracion solo para superadmin, ademas modulada por config_sistema
+        self.perm_configuracion = (self.user_rol in ('superadmin', 'admin'))
+        # Filtrar volcado por modulos activos
+        self._aplicar_modulos()
+
+    def _aplicar_modulos(self):
+        try:
+            from utils.config_sistema import modulos_activos
+            activos = modulos_activos()
+            if 'volcado' not in activos:
+                self.perm_volcado = False
+        except Exception:
+            pass
+
+    def _cargar_empresa(self):
+        try:
+            from utils.config_sistema import get_all
+            cfg = get_all()
+            nombre = cfg.get('empresa_nombre', '')
+            if nombre:
+                self.empresa_nombre = nombre
+            self.label_clientes   = cfg.get('label_clientes',   'Clientes')
+            self.label_cobros     = cfg.get('label_cobros',     'Cobros')
+            self.label_pagos      = cfg.get('label_pagos',      'Pagos')
+            self.label_soporte    = cfg.get('label_soporte',    'Soporte')
+            self.label_id_cliente = cfg.get('label_id_cliente', 'Código')
+        except Exception:
+            pass
 
     def on_start(self):
+        import config
         def _primer_frame(*_):
-            Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'login'), 2.0)
+            if config.es_primer_uso():
+                Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'setup'), 0.5)
+            else:
+                self._cargar_empresa()
+                Clock.schedule_once(lambda *_: setattr(self.root, 'current', 'login'), 2.0)
         Clock.schedule_once(_primer_frame, 0)
 
     def build(self):
         sm = ScreenManager(transition=FadeTransition(duration=0.15))
         sm.app = self
         sm.add_widget(SplashScreen(name='splash'))
+        sm.add_widget(SetupScreen(name='setup'))
         sm.add_widget(LoginScreen(name='login'))
+        sm.add_widget(CambiarPasswordScreen(name='cambiar_password'))
         sm.add_widget(DashboardScreen(name='dashboard'))
         sm.add_widget(ImportarScreen(name='importar'))
         sm.add_widget(SuscriptoresScreen(name='suscriptores'))

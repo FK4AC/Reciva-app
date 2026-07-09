@@ -7,18 +7,20 @@ El rol 'superadmin' es inmutable y tiene todos los permisos sin excepción.
 PANTALLAS = [
     'dashboard', 'suscriptores', 'facturacion', 'tickets',
     'importar', 'estadisticas', 'volcado', 'usuarios', 'roles',
+    'configuracion',
 ]
 
 PANTALLAS_LABELS = {
-    'dashboard':    'Dashboard',
-    'suscriptores': 'Suscriptores',
-    'facturacion':  'Facturación',
-    'tickets':      'Tickets / PQR',
-    'importar':     'Importar',
-    'estadisticas': 'Estadísticas',
-    'volcado':      'Volcado',
-    'usuarios':     'Usuarios',
-    'roles':        'Gestión de Roles',
+    'dashboard':      'Dashboard',
+    'suscriptores':   'Suscriptores',
+    'facturacion':    'Facturación',
+    'tickets':        'Tickets / PQR',
+    'importar':       'Importar',
+    'estadisticas':   'Estadísticas',
+    'volcado':        'Volcado',
+    'usuarios':       'Usuarios',
+    'roles':          'Gestión de Roles',
+    'configuracion':  'Ajustes del sistema',
 }
 
 _PERMISOS_DEFAULTS = {
@@ -72,11 +74,35 @@ def setup_tablas_roles(conn):
     """)
     conn.commit()
 
-    # Convert usuarios.rol from ENUM to VARCHAR so dynamic roles can be assigned
+    # Ensure rol column exists (adds it on old installs, modifies type if needed)
     try:
         cur.execute("""
             ALTER TABLE usuarios
             MODIFY COLUMN rol VARCHAR(50) NOT NULL DEFAULT 'operador'
+        """)
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        cur.execute("""
+            ALTER TABLE usuarios
+            ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0
+        """)
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        cur.execute("""
+            ALTER TABLE facturas
+            ADD COLUMN tarifa_aire DECIMAL(10,2) NOT NULL DEFAULT 0
+        """)
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        cur.execute("""
+            ALTER TABLE recaudos
+            ADD COLUMN tarifa_aire DECIMAL(10,2) NOT NULL DEFAULT 0
         """)
         conn.commit()
     except Exception:

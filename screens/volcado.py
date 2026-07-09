@@ -72,12 +72,11 @@ _CAMPOS = list(_ETIQUETAS.keys())
 
 # ── Screen ────────────────────────────────────────────────────────────────────
 
-class VolcadoScreen(Screen):
+class VolcadoBase(Screen):
     mensaje_tarifas = StringProperty('')
 
     _config:  dict = {}
     _tarifas: dict = {}
-    _tab_activa: str = 'tarifas'
     _tabla_tar_ws: dict = {}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -121,26 +120,7 @@ class VolcadoScreen(Screen):
         prox = periodo_siguiente(hoy_aaaamm)
         self.ids.inp_periodo.text = prox
 
-        self.cambiar_tab(self._tab_activa)
         self._construir_tabla_tarifas()
-
-    # ── Tabs ──────────────────────────────────────────────────────────────────
-
-    def cambiar_tab(self, tab):
-        self._tab_activa = tab
-        tabs   = {'tarifas': self.ids.tab_tarifas,
-                  'exportar': self.ids.tab_exportar}
-        panels = {'tarifas': self.ids.panel_tarifas,
-                  'exportar': self.ids.panel_exportar}
-        for k, btn in tabs.items():
-            btn.is_active = (k == tab)
-        for k, pan in panels.items():
-            active = (k == tab)
-            pan.opacity     = 1 if active else 0
-            pan.disabled    = not active
-            pan.size_hint_y = 1 if active else None
-            if not active:
-                pan.height = 0
 
     # ── Carpeta salida ────────────────────────────────────────────────────────
 
@@ -261,11 +241,21 @@ class VolcadoScreen(Screen):
             ws['lbl_media'].text = t['tarifa_media']
 
     def _popup_tarifa(self, uso):
+        self.ids.lbl_estado.text = f'Abriendo tarifa: {uso}…'
         try:
             self._popup_tarifa_impl(uso)
         except Exception as e:
             import traceback; traceback.print_exc()
-            self.ids.lbl_estado.text = f'Error: {e}'
+            msg = f'Error tarifa: {e}'
+            self.ids.lbl_estado.text = msg
+            err_pop = Popup(
+                title='Error al abrir tarifa',
+                content=Label(text=str(e), color=TINTA, text_size=(320, None),
+                              halign='center', valign='middle'),
+                size_hint=(None, None), size=(380, 180),
+                background_color=CARD, separator_height=1,
+            )
+            err_pop.open()
 
     def _popup_tarifa_impl(self, uso):
         raw     = self._tarifas.get(uso, {})
@@ -666,7 +656,9 @@ class VolcadoScreen(Screen):
                 lambda *_: self._post_exportar('Sin conexión a BD', None, None), 0)
             return
         try:
-            totales, errores = generar_volcado_bd(conn, self._tarifas, salida, periodo, barrios)
+            totales, errores = generar_volcado_bd(
+                conn, self._tarifas, salida, periodo, barrios, cfg=self._config
+            )
             n_prin = totales.get('principal', 0)
             n_h1   = totales.get('hoja1', 0)
             msg = (f'5 archivos generados  •  {n_prin} principal + {n_h1} hoja1'
@@ -684,11 +676,13 @@ class VolcadoScreen(Screen):
         overlay.hide()
         self.ids.lbl_export_estado.text = msg
         if carpeta_salida and 'Error' not in msg and periodo:
+            from utils.volcado import _get_empresa_convenio
+            empresa_tag, convenio_tag = _get_empresa_convenio(self._config)
             archivos = [
-                os.path.join(carpeta_salida, f'INGESAM_VOLCADO_2087_{periodo}.txt'),
-                os.path.join(carpeta_salida, f'INFO_ADICIONAL_INGESAM_2087_{periodo}.txt'),
-                os.path.join(carpeta_salida, f'Hoja1_INGESAM_VOLCADO_2087_{periodo}.txt'),
-                os.path.join(carpeta_salida, f'Hoja1_INFO_ADICIONAL_INGESAM_2087_{periodo}.txt'),
+                os.path.join(carpeta_salida, f'{empresa_tag}_VOLCADO_{convenio_tag}_{periodo}.txt'),
+                os.path.join(carpeta_salida, f'INFO_ADICIONAL_{empresa_tag}_{convenio_tag}_{periodo}.txt'),
+                os.path.join(carpeta_salida, f'Hoja1_{empresa_tag}_VOLCADO_{convenio_tag}_{periodo}.txt'),
+                os.path.join(carpeta_salida, f'Hoja1_INFO_ADICIONAL_{empresa_tag}_{convenio_tag}_{periodo}.txt'),
                 os.path.join(carpeta_salida, 'TABLA_PRECIOS_ASEO.xlsx'),
             ]
             self._popup_enviar(archivos, periodo)
@@ -696,6 +690,14 @@ class VolcadoScreen(Screen):
     # ── Config correo ─────────────────────────────────────────────────────────
 
     def popup_config_email(self):
+        self.ids.lbl_estado.text = 'Abriendo correo…'
+        try:
+            self._popup_config_email_impl()
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.ids.lbl_estado.text = f'Error correo: {e}'
+
+    def _popup_config_email_impl(self):
         AZUL = (0.200, 0.470, 0.820, 1)
         PURP = (0.502, 0.251, 0.671, 1)
 
@@ -1030,3 +1032,7 @@ class VolcadoScreen(Screen):
             lbl.color = SUCCESS if ok else DANGER
             lbl.text  = (f'Enviado a {len(dest_lines)} destinatario(s) ✓' if ok else msg)
         Clock.schedule_once(act, 0)
+
+
+class VolcadoScreen(VolcadoBase):
+    pass

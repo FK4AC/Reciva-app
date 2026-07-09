@@ -13,11 +13,13 @@ USE reciva_db;
 --  Usuarios del sistema (login)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuarios (
-    id       INT AUTO_INCREMENT PRIMARY KEY,
-    nombre   VARCHAR(100)  NOT NULL,
-    email    VARCHAR(150)  NOT NULL UNIQUE,
-    password VARCHAR(64)   NOT NULL,   -- SHA-256 en hex
-    activo   TINYINT(1)    NOT NULL DEFAULT 1
+    id                   INT AUTO_INCREMENT PRIMARY KEY,
+    nombre               VARCHAR(100)  NOT NULL,
+    email                VARCHAR(150)  NOT NULL UNIQUE,
+    password             VARCHAR(64)   NOT NULL,
+    activo               TINYINT(1)    NOT NULL DEFAULT 1,
+    rol                  VARCHAR(50)   NOT NULL DEFAULT 'operador',
+    must_change_password TINYINT(1)   NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Usuario por defecto: admin@reciva.com / 123456
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS facturas (
     concepto         VARCHAR(300),
     importe          DECIMAL(14,2) NOT NULL DEFAULT 0,
     valor_recibo     DECIMAL(14,2) NOT NULL DEFAULT 0,
+    tarifa_aire      DECIMAL(10,2) NOT NULL DEFAULT 0,
     operacion        VARCHAR(50),
     sector           VARCHAR(50),
     municipio        VARCHAR(100),
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS recaudos (
     concepto          VARCHAR(300),
     importe           DECIMAL(14,2) NOT NULL DEFAULT 0,
     valor_recibo      DECIMAL(14,2) NOT NULL DEFAULT 0,
+    tarifa_aire       DECIMAL(10,2) NOT NULL DEFAULT 0,
     sector            VARCHAR(50),
     municipio         VARCHAR(100),
     año               SMALLINT,
@@ -99,6 +103,25 @@ CREATE TABLE IF NOT EXISTS recaudos (
     INDEX idx_numero_factura  (numero_factura),
     INDEX idx_año_mes         (año, mes)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+--  Configuración del sistema (empresa, módulos, etiquetas)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS config_sistema (
+    clave  VARCHAR(80) PRIMARY KEY,
+    valor  TEXT        NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO config_sistema VALUES
+  ('empresa_nombre',   ''),
+  ('empresa_nit',      ''),
+  ('empresa_logo',     ''),
+  ('modulos_activos',  'clientes,cobros,pagos,soporte,estadisticas'),
+  ('label_clientes',   'Clientes'),
+  ('label_cobros',     'Cobros'),
+  ('label_pagos',      'Pagos'),
+  ('label_soporte',    'Soporte'),
+  ('label_id_cliente', 'Código');
 
 -- ------------------------------------------------------------
 --  PQR — Peticiones, Quejas y Recursos

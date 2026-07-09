@@ -94,7 +94,9 @@ class LoginScreen(Screen):
                 app.aplicar_permisos(permisos)
             if not auto:
                 guardar_sesion(user)
-            if permisos and permisos.get('dashboard', (False,))[0]:
+            if user.get('must_change_password', 0):
+                app.root.current = 'cambiar_password'
+            elif permisos and permisos.get('dashboard', (False,))[0]:
                 app.root.current = 'dashboard'
             else:
                 app.root.current = 'tickets'
